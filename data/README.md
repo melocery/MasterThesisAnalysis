@@ -7,9 +7,8 @@ data/
 │   └── umap*.csv                 # UMAP coordinates
 │
 ├── mouse_hypothalamus/           # Raw and processed MERFISH data
-│   ├── all_cells/
-│   │   └── merfish_all_cells.csv          # Segmentation-based data
-│   ├── raw/
+│   ├── MERFISH/
+│   │   ├── merfish_all_cells.csv          # Segmentation-based data
 │   │   ├── cellboundaries_example_animal.csv   # Cell boundary coordinates
 │   │   └── merfish_barcodes_example.csv        # Transcript dataset
 │   ├── single_cell/
