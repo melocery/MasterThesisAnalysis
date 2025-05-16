@@ -2,12 +2,21 @@ import numpy as np
 import pandas as pd
 
 from scipy.interpolate import interp1d
+from scipy.spatial import ConvexHull
+from scipy.cluster.hierarchy import linkage, leaves_list
 
+from sklearn.neighbors import NearestNeighbors
+
+import umap
+from sklearn.decomposition import PCA
+
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from matplotlib.patches import Circle
 from matplotlib.colors import Normalize
 from matplotlib.colors import LinearSegmentedColormap
+
 import seaborn as sns
 
 _BIH_CMAP = LinearSegmentedColormap.from_list(
@@ -22,6 +31,8 @@ _BIH_CMAP = LinearSegmentedColormap.from_list(
         "white",
     ][::-1],
 )
+
+HEATMAP_CMAP = sns.color_palette("RdYlBu_r", as_cmap=True)
 
 # ======================================
 # Vertical Signal Integrity Map
@@ -498,7 +509,7 @@ def plot_celltypes(
 
 
 # ======================================
-# Vertical Signal Integrity Map
+# Transcript Neighborhood
 # ======================================
 
 def plot_circular_neighborhood(
@@ -521,47 +532,30 @@ def plot_circular_neighborhood(
     fig, ax = plt.subplots(figsize=(8, 8), dpi=600)
 
     # Plot signal points
-    if plot_top20 and top20:
+    if plot_top20 and top20 is not None:
         marker_styles = ['o', 's', 'D', '^']
         colors = sns.color_palette("tab10", 5)
         style_dict = {
             gene: (marker_styles[i % len(marker_styles)], colors[i % len(colors)])
             for i, gene in enumerate(top20)
         }
-
         # Background (other genes)
-        ax.scatter(
-            signals_filtered['x'], signals_filtered['y'],
-            s=3, color='lightgrey', alpha=0.5, label="Other Genes"
-        )
-
+        ax.scatter(signals_filtered['x'], signals_filtered['y'], s=3, color='lightgrey', alpha=0.5, label="Other Genes")
         # Top 20 genes
         for gene, (marker, color) in style_dict.items():
             subset = signals_filtered[signals_filtered['gene'] == gene]
-            ax.scatter(
-                subset['x'], subset['y'],
-                s=3, color=color, marker=marker, alpha=0.8, label=gene
-            )
+            ax.scatter(subset['x'], subset['y'], s=3, color=color, marker=marker, alpha=0.8, label=gene)
     else:
         # Continuous color mapping
         norm = Normalize(vmin=0, vmax=2000)
         cmap = plt.get_cmap("Oranges")
-        ax.scatter(
-            signals_filtered["x"], signals_filtered["y"],
-            s=3, c=cmap(norm(signals_filtered["Total_brightness"]))
-        )
+        ax.scatter(signals_filtered["x"], signals_filtered["y"], s=3, c=cmap(norm(signals_filtered["Total_brightness"])))
         # Colorbar
-        cbar = plt.colorbar(
-            plt.cm.ScalarMappable(norm=norm, cmap=cmap),
-            ax=ax, shrink=0.5, pad=0.02, anchor=(0.0, 0.3)
-        )
+        cbar = plt.colorbar(plt.cm.ScalarMappable(norm=norm, cmap=cmap), ax=ax, shrink=0.45, pad=0.02, anchor=(0.0, 0.3))
         cbar.set_label("Signal Brightness")
 
     # Plot centroids
-    ax.scatter(
-        centroid_filtered["x"], centroid_filtered["y"],
-        s=15, c='blue', marker="x", label="Cell Centroids"
-    )
+    ax.scatter(centroid_filtered["x"], centroid_filtered["y"], s=15, c='blue', marker="x", label="Cell Centroids")
 
     # Plot boundaries
     if true_boundary:
@@ -588,14 +582,517 @@ def plot_circular_neighborhood(
         ax.plot([], [], color=color, label=f'Diameter={diameter}')
 
     # Final touches
-    ax.legend(
-        loc="upper left", bbox_to_anchor=(1.02, 1),
-        fontsize=10, frameon=False, markerscale=1.5
-    )
+    ax.legend(loc="upper left", bbox_to_anchor=(1.02, 1), fontsize=8, frameon=False, markerscale=1.5, ncol=1)
     ax.set_xlim(x_range)
     ax.set_ylim(y_range)
     ax.set_xlabel("X")
     ax.set_ylabel("Y")
     ax.set_aspect('equal')
     plt.tight_layout()
+    plt.show()
+
+
+def compute_knn(coordinate_df, query_points, k):
+    """
+    Compute the k-nearest neighbors for a set of query points.
+
+    Parameters:
+        coordinate_df (DataFrame): DataFrame containing x, y, z coordinates.
+        query_points (ndarray): Array of query points (Nx3).
+        k (int): Number of neighbors to find.
+
+    Returns:
+        List of dictionaries with neighbor indices and distances.
+    """
+    if k > len(coordinate_df):
+        raise ValueError(f"k ({k}) cannot be greater than the number of points in coordinate_df ({len(coordinate_df)})")
+
+    coordinates = coordinate_df[['x', 'y', 'z']].values
+
+    nbrs = NearestNeighbors(n_neighbors=k)
+    nbrs.fit(coordinates)
+    distances, indices = nbrs.kneighbors(query_points)
+
+    return [
+        {
+            'query_point': query.tolist(),
+            'neighbor_indices': idx.tolist(),
+            'neighbor_distances': dist.tolist()
+        }
+        for query, dist, idx in zip(query_points, distances, indices)
+    ]
+
+
+def plot_knn_neighborhood(signals_df, centroid_df, MOD_boundaries, boundaries_df, x_range, y_range, 
+                                         neighbors=[20, 40, 80, 160, 220], true_boundary=True, 
+                                         plot_top20=False, top20=None):
+    """
+    Plot focus points, boundaries, and k-NN-based convex hulls around centroids.
+
+    Parameters:
+        signals_df (DataFrame): DataFrame containing signal points.
+        centroid_df (DataFrame): DataFrame containing centroid positions.
+        MOD_boundaries (DataFrame): DataFrame with MOD boundary data.
+        boundaries_df (DataFrame): DataFrame with other boundary data.
+        x_range (tuple): X-axis range.
+        y_range (tuple): Y-axis range.
+        neighbors (list): List of k-values for kNN hull drawing.
+        true_boundary (bool): Whether to plot true cell boundaries.
+        plot_top20 (bool): Whether to highlight top 20 genes.
+        top20 (list): List of top 20 gene names.
+    """
+    # Filter all dataframes by range
+    def filter_df(df):
+        return df[(df["x"] >= x_range[0]) & (df["x"] <= x_range[1]) &
+                  (df["y"] >= y_range[0]) & (df["y"] <= y_range[1])]
+
+    signals_filtered = filter_df(signals_df)
+    centroid_filtered = filter_df(centroid_df)
+    MOD_filtered = filter_df(MOD_boundaries)
+    boundaries_filtered = filter_df(boundaries_df)
+
+    fig, ax = plt.subplots(figsize=(8, 8), dpi=600)
+    norm = Normalize(vmin=0, vmax=2000)
+    cmap = plt.cm.Oranges
+
+    if plot_top20 and top20 is not None:
+        marker_styles = ['o', 's', 'D', '^']
+        colors = sns.color_palette("tab10", 5)
+        top20_dict = {gene: (marker_styles[i % 4], colors[i % 5]) for i, gene in enumerate(top20)}
+
+        ax.scatter(signals_filtered['x'], signals_filtered['y'], s=3, color='lightgrey', alpha=0.5, label="Other Genes")
+
+        for gene, (marker, color) in top20_dict.items():
+            subset = signals_filtered[signals_filtered['gene'] == gene]
+            ax.scatter(subset['x'], subset['y'], s=3, color=color, marker=marker, alpha=0.8, label=gene)
+    else:
+        ax.scatter(signals_filtered['x'], signals_filtered['y'], s=3, c=cmap(norm(signals_filtered['Total_brightness'])))
+        cbar = plt.colorbar(plt.cm.ScalarMappable(norm=norm, cmap=cmap), ax=ax, shrink=0.45, pad=0.02, anchor=(0.0, 0.3))
+        cbar.set_label("Signal Brightness")
+
+    # Plot centroids
+    ax.scatter(centroid_filtered['x'], centroid_filtered['y'], s=15, c='blue', label="Cell Centroids", marker='x')
+
+    # Plot true boundaries if requested
+    if true_boundary:
+        for df, color, label in [(boundaries_filtered, 'grey', "Other Cells Boundary"), (MOD_filtered, '#00bfae', "MOD Cells Boundary")]:
+            for _, row in df.iterrows():
+                ax.plot(row['boundaryX'], row['boundaryY'], c=color, lw=1)
+            ax.plot([], [], color=color, lw=1, label=label)
+
+    # Plot convex hulls around kNN
+    cmap_rings = mpl.colormaps['tab20']
+    for idx, k in enumerate(neighbors):
+        color = cmap_rings(idx / len(neighbors))
+        label_added = False
+        for _, centroid in centroid_filtered.iterrows():
+            query_point = np.array([[centroid['x'], centroid['y'], 4.5]])
+            knn = compute_knn(signals_df, query_point, k)
+            neighbor_pts = signals_df.iloc[knn[0]['neighbor_indices']][['x', 'y']].values
+
+            if len(neighbor_pts) < 3:
+                continue
+
+            hull = ConvexHull(neighbor_pts)
+            for simplex in hull.simplices:
+                ax.plot(neighbor_pts[simplex, 0], neighbor_pts[simplex, 1], color=color, lw=1,
+                        label=f"k={k} NN" if not label_added else None)
+                label_added = True
+
+    ax.set_xlim(x_range)
+    ax.set_ylim(y_range)
+    ax.set_xlabel("X")
+    ax.set_ylabel("Y")
+    ax.set_aspect('equal')
+    ax.legend(loc="upper left", bbox_to_anchor=(1.02, 1), fontsize=8, frameon=False, markerscale=1.5, ncol=1)
+    plt.show()
+
+
+# ======================================
+# Marker Signals Spatial Distribution
+# ======================================
+
+def plot_marker_signals(signal_df, centroid_df, title=None, 
+                        color="MOD1", xlim=(-10, 1810), ylim=(-10, 1810), 
+                        plot_rect=False, rect=[750, 100, 220, 1400]):
+    """
+    Plot signal scatter and centroid markers with optional highlight rectangle.
+    
+    Parameters:
+    - signal_df: DataFrame with 'x', 'y', and 'Total_brightness' columns
+    - centroid_df: DataFrame with 'x' and 'y' columns for centroid locations
+    - title: Title of the plot (string)
+    - color: 'MOD1' for orange-red, otherwise blue
+    - xlim: Tuple specifying x-axis limits
+    - ylim: Tuple specifying y-axis limits
+    - plot_rect: Boolean, whether to draw a rectangle
+    - rect: List [x, y, width, height] for the rectangle
+    """
+
+    norm = Normalize(0, 2000)
+
+    if color == "MOD1":
+        color_s = plt.cm.Oranges(norm(signal_df['Total_brightness']))
+        color_c = 'red'
+    else:
+        color_s = plt.cm.Blues(norm(signal_df['Total_brightness']))
+        color_c = 'blue'
+
+    plt.figure(figsize=(8, 8), dpi=600)
+
+    plt.scatter(
+        signal_df["x"],
+        signal_df["y"],
+        s=1,
+        c=color_s, 
+        alpha=0.8,
+    )
+
+    for _, row in centroid_df.iterrows():
+        plt.text(
+            row["x"], 
+            row["y"], 
+            "x", 
+            fontsize=7, 
+            color=color_c,
+            ha='center', 
+            va='center'
+        )
+
+    if plot_rect and rect is not None and len(rect) == 4:
+        x_rect, y_rect, width, height = rect
+        ax = plt.gca()
+        rectangle_patch = patches.Rectangle(
+            (x_rect, y_rect), width, height,
+            linewidth=1, edgecolor='red', facecolor='none'
+        )
+        ax.add_patch(rectangle_patch)
+
+    plt.xlim(xlim)
+    plt.ylim(ylim)
+
+    plt.xlabel("(μm)")
+    plt.ylabel("(μm)")
+    plt.xticks([])
+    plt.yticks([])
+    if title:
+        plt.title(title, fontsize=15)
+
+    ax = plt.gca()
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+
+    plt.show()
+
+
+# ======================================
+# Marker Heatmap
+# ======================================
+def plot_annotate_heatmap(cluster_data, cluster_labels, gene_groups=None, zscore=True, cmap=HEATMAP_CMAP,
+                          box_specs=None, cluster_text_y=-1.2, show_cluster=True,
+                          show_cluster_lines=True, DE_g_line=True):
+    """
+    Plot expression heatmap with cluster annotations and optional decorations.
+
+    Parameters:
+    - cluster_data: DataFrame, rows = cells, columns = genes (+ optional 'Cell_class')
+    - cluster_labels: 1D array-like, cluster labels for each cell
+    - gene_groups: optional DataFrame with 'cluster' column for gene clustering
+    - zscore: Boolean, apply z-score normalization by gene
+    - cmap: Colormap to use
+    - box_specs: List of dictionaries, each with keys: x_offset, width, color, linestyle
+    - cluster_text_y: Y position to write cluster labels
+    - show_cluster: Boolean, whether to show cluster labels
+    - show_cluster_lines: Boolean, draw dashed lines between clusters
+    - DE_g_line: Boolean, draw a horizontal line at y=9
+    """
+
+    # Data preprocessing
+    cluster_data = cluster_data.copy()
+    cluster_data['Cell_class'] = cluster_labels
+
+    cluster_data = cluster_data.sort_values(by='Cell_class')
+    cell_class_col = cluster_data['Cell_class']
+    numeric_data = cluster_data.drop(columns=['Cell_class']).apply(pd.to_numeric, errors='coerce')
+    numeric_data = numeric_data.dropna(axis=1).loc[:, ~numeric_data.T.duplicated()]
+    cluster_data = pd.concat([cell_class_col, numeric_data], axis=1)
+
+    expression_data = cluster_data.drop('Cell_class', axis=1).T
+    expression_data = expression_data.loc[:, ~expression_data.columns.duplicated()]
+
+    cluster_labels_sorted = cluster_data['Cell_class'].values
+    unique_labels = sorted(set(cluster_labels_sorted))
+
+    # Normalize
+    if zscore:
+        expression_data = expression_data.apply(lambda x: (x - x.mean()) / x.std(), axis=1)
+        vmin, vmax = -3, 3
+    else:
+        vmin, vmax = 0, 5
+
+    # Reorder cells within cluster
+    new_order = []
+    for label in unique_labels:
+        indices = np.where(cluster_labels_sorted == label)[0]
+        subset = expression_data.iloc[:, indices]
+        if subset.shape[1] > 1:
+            linkage_matrix = linkage(subset.T, method='ward')
+            sorted_indices = indices[leaves_list(linkage_matrix)]
+        else:
+            sorted_indices = indices
+        new_order.extend(sorted_indices)
+
+    reordered_expression_data = expression_data.iloc[:, new_order]
+    reordered_cluster_labels = cluster_labels_sorted[new_order]
+
+    # Reorder genes
+    if gene_groups is not None:
+        new_gene_order = []
+        for label in sorted(set(gene_groups['cluster'])):
+            gene_indices = np.where(gene_groups == label)[0]
+            subset = reordered_expression_data.iloc[gene_indices, :]
+            if subset.shape[0] > 1:
+                linkage_matrix = linkage(subset, method='average')
+                sorted_gene_indices = gene_indices[leaves_list(linkage_matrix)]
+            else:
+                sorted_gene_indices = gene_indices
+            new_gene_order.extend(sorted_gene_indices)
+    else:
+        new_gene_order = leaves_list(linkage(reordered_expression_data, method='average'))
+
+    reordered_expression_data = reordered_expression_data.iloc[new_gene_order, :]
+
+    # Plot heatmap
+    fig, ax = plt.subplots(figsize=(20, 10), dpi=600)
+    sns.heatmap(
+        reordered_expression_data,
+        vmin=vmin, vmax=vmax,
+        cmap=cmap,
+        xticklabels=False,
+        yticklabels=True,
+        cbar=True,
+        ax=ax,
+        cbar_kws={"shrink": 0.5}
+    )
+
+    ax.set_yticklabels(ax.get_yticklabels(), fontsize=15, rotation=0)
+    ax.set_xlabel("")
+    ax.set_ylabel("")
+
+    # Annotate cluster
+    cluster_boundaries = []
+    for label in unique_labels:
+        indices = np.where(reordered_cluster_labels == label)[0]
+        if len(indices) == 0:
+            continue
+        start, end = indices[0], indices[-1]
+        x_pos = (start + end) / 2
+        if show_cluster:
+            ax.text(x_pos, cluster_text_y, str(label), ha='center', va='center', rotation=90, fontsize=15)
+        cluster_boundaries.append(end)
+
+    if show_cluster_lines:
+        for boundary in cluster_boundaries[:-1]:
+            ax.axvline(x=boundary + 0.5, color='purple', linestyle='--', linewidth=1)
+
+    if DE_g_line:
+        ax.hlines(y=9, xmin=ax.get_xlim()[0], xmax=ax.get_xlim()[1], color='green', linestyle='--', linewidth=1)
+
+    if box_specs is not None:
+        ax_pos = ax.get_position()
+        y_rect = ax_pos.y0 - 0.1
+        height = ax_pos.height * 18.15
+        for box in box_specs:
+            rect = patches.Rectangle(
+                (ax_pos.x0 + box["x_offset"], y_rect),
+                box["width"], height,
+                linewidth=1.5,
+                edgecolor=box["color"],
+                facecolor='none',
+                linestyle=box.get("linestyle", '--')
+            )
+            ax.add_patch(rect)
+
+    plt.show()
+
+
+def plot_neuron_cluster_heatmap(re_IN, re_IN_clu, DE_g=True, cmap=HEATMAP_CMAP, figures=(15, 25), DE_g_x=9):
+    """
+    Plot heatmap of expression matrix with cluster labels and optional DE gene divider.
+
+    Parameters:
+    - re_IN: Gene x Cell expression matrix (already ordered).
+    - re_IN_clu: Cluster label array aligned to columns of re_IN.
+    - DE_g: Whether to plot vertical line indicating DE gene boundary.
+    - cmap: Colormap used in heatmap.
+    - figures: Tuple indicating figure size (width, height).
+    - DE_g_x: X-position for vertical DE gene divider.
+    """
+    unique_labels = sorted(set(re_IN_clu))
+
+    plt.figure(figsize=figures, dpi=600)
+    ax = sns.heatmap(
+        re_IN.T,
+        vmin=-3, vmax=3,
+        annot=False, fmt="g", xticklabels=True, yticklabels=False,
+        cmap=cmap,
+        cbar=True,
+        cbar_kws={"shrink": 0.5}
+    )
+
+    try:
+        cbar = ax.collections[0].colorbar
+        cbar.ax.set_position([
+            ax.get_position().x1 + 0.01,
+            ax.get_position().y1 - 0.3,
+            0.02,
+            0.2
+        ])
+    except:
+        print("Warning: Failed to reposition colorbar.")
+
+    ax.set_xticklabels(ax.get_xticklabels(), fontsize=13, rotation=0)
+
+    cluster_boundaries = []
+    for label in unique_labels:
+        class_indices = np.where(re_IN_clu == label)[0]
+        if len(class_indices) == 0:
+            continue
+
+        start_idx, end_idx = class_indices[0], class_indices[-1]
+        x_pos = (start_idx + end_idx) / 2
+        ax.text(-1.5, x_pos, str(label), ha='center', va='center', rotation=0, fontsize=11, color='black')
+        cluster_boundaries.append(end_idx)
+
+    yticks = ax.get_yticks()
+    yticklabels = [label.get_text() for label in ax.get_yticklabels()]
+    adjusted_positions = {}
+
+    for i, (ytick, label) in enumerate(zip(yticks, yticklabels)):
+        if i > 0 and abs(ytick - yticks[i - 1]) < 5:
+            new_y = yticks[i - 1] - 5
+            adjusted_positions[label] = new_y
+        else:
+            adjusted_positions[label] = ytick
+
+    for label, new_y in adjusted_positions.items():
+        if new_y != yticks[yticklabels.index(label)]:
+            orig_y = yticks[yticklabels.index(label)]
+            ax.annotate(
+                label,
+                xy=(-1.5, orig_y), xytext=(-3, new_y),
+                ha='right', va='center', fontsize=10, color='black',
+                arrowprops=dict(arrowstyle="-", color="gray", linewidth=1.0, alpha=0.6)
+            )
+        else:
+            ax.text(-1.5, new_y, label, ha='right', va='center', fontsize=10, color='black')
+
+    for boundary in cluster_boundaries:
+        ax.axhline(y=boundary, color='purple', linestyle='--', linewidth=1)
+
+    if DE_g:
+        ax.vlines(x=DE_g_x, ymin=ax.get_ylim()[0], ymax=ax.get_ylim()[1], color='green', linestyle='--', linewidth=1)
+
+    plt.xlabel("")
+    plt.ylabel("")
+    plt.tight_layout()
+    plt.show()
+
+
+# ======================================
+# PCA and UMAP
+# ======================================
+def plot_pca_variance_ratio(data, n_components=14, title="Explained Variance by PC"):
+    """
+    Plot the explained variance ratio of PCA components.
+
+    Parameters:
+    - data (pd.DataFrame or np.ndarray): Input data (cells x features)
+    - n_components (int): Number of PCA components to calculate
+    - title (str): Title for the plot
+    """
+    pca = PCA(n_components=n_components, random_state=42)
+    pca.fit(data)
+    explained_variance = pca.explained_variance_ratio_
+
+    plt.figure(figsize=(8, 6), dpi=600)
+    plt.plot(
+        np.arange(1, len(explained_variance) + 1),
+        explained_variance,
+        marker='o',
+        linestyle='--',
+        color='mediumvioletred'
+    )
+    plt.xlabel("Number of Principal Components")
+    plt.ylabel("Explained Variance Ratio")
+    plt.title(title)
+
+    ax = plt.gca()
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    plt.show()
+
+
+def plot_pca_cumulative_variance(data, n_components=14, title="Cumulative Explained Variance"):
+    """
+    Plot cumulative explained variance from PCA.
+
+    Parameters:
+    - data (pd.DataFrame or np.ndarray): Input data (cells x features)
+    - n_components (int): Number of PCA components to calculate
+    - title (str): Title for the plot
+    """
+    pca = PCA(n_components=n_components, random_state=42)
+    pca.fit(data)
+    cumulative_variance = np.cumsum(pca.explained_variance_ratio_)
+
+    plt.figure(figsize=(8, 6), dpi=600)
+    plt.plot(
+        np.arange(1, len(cumulative_variance) + 1),
+        cumulative_variance,
+        marker='o',
+        linestyle='-',
+        color='mediumvioletred'
+    )
+    plt.xlabel("Number of Principal Components")
+    plt.ylabel("Cumulative Explained Variance")
+    plt.title(title)
+
+    ax = plt.gca()
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    plt.show()
+
+
+def plot_umap_from_pca(data, n_PCs=5, title="UMAP after PCA", color='mediumvioletred'):
+    """
+    Perform PCA and UMAP projection, then plot UMAP result.
+
+    Parameters:
+    - data (pd.DataFrame or np.ndarray): Input data (cells x features)
+    - n_PCs (int): Number of principal components to use
+    - title (str): Title for the plot
+    - color (str): Color of scatter points
+    """
+    pca = PCA(n_components=n_PCs, random_state=42)
+    pca_result = pca.fit_transform(data)
+
+    umap_result = umap.UMAP(n_components=2).fit_transform(pca_result)
+
+    plt.figure(figsize=(8, 6), dpi=600)
+    plt.scatter(
+        umap_result[:, 0],
+        umap_result[:, 1],
+        alpha=0.7,
+        s=11,
+        edgecolors='none',
+        color=color
+    )
+    plt.xlabel("UMAP 1")
+    plt.ylabel("UMAP 2")
+    plt.title(title)
+
+    ax = plt.gca()
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
     plt.show()
