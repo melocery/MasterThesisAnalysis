@@ -16,6 +16,7 @@ import matplotlib.patches as patches
 from matplotlib.patches import Circle
 from matplotlib.colors import Normalize
 from matplotlib.colors import LinearSegmentedColormap
+from matplotlib.ticker import LogLocator
 
 import seaborn as sns
 
@@ -60,7 +61,7 @@ def plot_VSI_map(
     Parameters:
         cell_integrity (2D np.ndarray): Signal integrity matrix.
         cell_strength (2D np.ndarray): Signal strength matrix.
-        signal_threshold (float): Threshold for alpha masking.
+        signal_threshold (float): Threshold below which the signal is faded out in the plot.
         figure_height (float): Height of the figure in inches.
         cmap (str or colormap): Colormap name or object.
         side_display (str or None): "hist", "colorbar", or None.
@@ -216,7 +217,7 @@ def plot_vsi_with_named_squares(
 # ======================================
 # integrity comparison
 # ======================================
-def plot_histogram(ax, cell_integrity, cell_strength, signal_threshold, cmap, label):
+def plot_histogram(ax, cell_integrity, cell_strength, signal_threshold, cmap, label, ylim=(1e-1,32), title=None):
     """
     Plot a histogram with color gradients based on a colormap.
 
@@ -224,7 +225,7 @@ def plot_histogram(ax, cell_integrity, cell_strength, signal_threshold, cmap, la
         ax: matplotlib axes object.
         cell_integrity: 1D array of signal integrity values.
         cell_strength: 1D array of signal strength values.
-        signal_threshold: Threshold to filter cell_strength.
+        signal_threshold: Threshold below which the signal is faded out in the plot.
         cmap: Colormap for gradient coloring.
         label: Label for the x-axis.
     """
@@ -252,13 +253,16 @@ def plot_histogram(ax, cell_integrity, cell_strength, signal_threshold, cmap, la
     
     # Customize appearance
     ax.set_xlim(0, 1)
-    # ax.set_ylim(, 32)
+    ax.set_ylim(ylim)
     ax.set_yscale('log', base=2)
     ax.set_ylabel("Density")
     ax.set_xlabel(label)
     ax.spines[["top", "right"]].set_visible(False)
     ax.yaxis.set_tick_params(labelright=False)
     ax.xaxis.set_tick_params(labelsize=8)
+
+    if title:
+        ax.set_title(title, fontsize=15)
     
     return vals, bins
 
@@ -270,6 +274,8 @@ def plot_vsi_distribution_comparison(
     signal_threshold=3.0,
     figure_height=10,
     cmap="BIH",
+    title=None,
+    ylim=(1e-1,32)
 ):
     """
     Compare histograms and cumulative densities of two datasets.
@@ -277,9 +283,10 @@ def plot_vsi_distribution_comparison(
     Parameters:
         cell_integrity_1, cell_strength_1: Data for dataset 1.
         cell_integrity_2, cell_strength_2: Data for dataset 2.
-        signal_threshold: Threshold for filtering data.
+        signal_threshold: Threshold below which the signal is faded out in the plot.
         figure_height: Height of the figure.
         cmap: Colormap for histogram gradients.
+        title: figure title.
     """
     # Validate inputs
     for data, name in [
@@ -304,10 +311,10 @@ def plot_vsi_distribution_comparison(
             
         # Plot histograms
         vals1, bins1 = plot_histogram(
-            ax[0], cell_integrity_1, cell_strength_1, signal_threshold, cmap, label="MOD1 Signal Integrity"
+            ax[0], cell_integrity_1, cell_strength_1, signal_threshold, cmap, label="MOD1 Signal Integrity", ylim=ylim,title=title
         )
         vals2, bins2 = plot_histogram(
-            ax[1], cell_integrity_2, cell_strength_2, signal_threshold, cmap, label="MOD2 Signal Integrity"
+            ax[1], cell_integrity_2, cell_strength_2, signal_threshold, cmap, label="MOD2 Signal Integrity", ylim=ylim
         )
 
     plt.tight_layout()  # Adjust spacing to prevent overlap
@@ -316,11 +323,11 @@ def plot_vsi_distribution_comparison(
     return vals1, bins1, vals2, bins2
 
 
-def plot_normalized_histogram(vals1, vals2, bins, epsilon, cmap=_BIH_CMAP, xlab="Signal Integrity", ylab="VSI Density of MOD2/MOD1"):
+def plot_normalized_histogram(vals1, vals2, bins, epsilon, ylim=(1e-1, 10**10), title=None, cmap=_BIH_CMAP, xlab="Signal Integrity", ylab="VSI Density of MOD2/MOD1"):
     vals = vals2 / (vals1 + epsilon)
     bin_centers = (bins[:-1] + bins[1:]) / 2
 
-    fig, ax = plt.subplots(figsize=(6, 6), dpi=600)
+    fig, ax = plt.subplots(figsize=(7, 7), dpi=600)
 
     # Create the histogram bars
     bars = ax.bar(bin_centers, vals, width=np.diff(bins), edgecolor="black", alpha=0.7, linewidth=0.3)
@@ -337,7 +344,10 @@ def plot_normalized_histogram(vals1, vals2, bins, epsilon, cmap=_BIH_CMAP, xlab=
     # Set the y-axis scale to log
     ax.set_yscale('log')
     # Add a horizontal dashed line at y = 1 (10^0)
+    ax.set_ylim(ylim)
     ax.axhline(y=1, color='black', linestyle='--', linewidth=0.5)
+    if title:
+        plt.title(title, fontsize=15)
     plt.show()
 
 
@@ -433,6 +443,53 @@ def plot_vsi_qqplot(vals1, bins1, vals2, bins2,
     ax.set_ylabel(ylab, fontsize=13)
     ax.legend(fontsize=11)
     ax.grid(False)
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_doublets(doublets_df, boundary_df, MOD_boundary, title=None):
+    """
+    Plot doublets, anatomical boundaries, and cell type centroids.
+
+    Parameters:
+    - doublets_df: DataFrame with 'x', 'y', and 'integrity' columns for doublets.
+    - boundary_df: DataFrame with non-OD cell boundary coordinates to plot in gray
+    - MOD_boundary: DataFrame with MOD boundary coordinates to plot in teal
+    """
+    import matplotlib.pyplot as plt
+
+    fig, ax = plt.subplots(figsize=(8, 8), dpi=600)
+
+    # --- Plot doublets ---
+    sc = ax.scatter(
+        doublets_df["x"],
+        doublets_df["y"],
+        c='mediumvioletred',
+        s=3,
+        edgecolor='none',
+        alpha=0.9,
+        label="Doublets"
+    )
+
+    # --- Plot boundaries ---
+    if boundary_df is not None:
+        for _, row in boundary_df.iterrows():
+            ax.plot(row["boundaryX"], row["boundaryY"], c='grey', lw=0.5)
+
+    if MOD_boundary is not None:
+        for _, row in MOD_boundary.iterrows():
+            ax.plot(row["boundaryX"], row["boundaryY"], c='#00bfae', lw=0.5)
+
+    ax.set_aspect("equal")
+    ax.set_xlabel("x")
+    ax.set_ylabel("y")
+    ax.set_xlim(-10,1810)
+    ax.set_ylim(-10,1810)
+    if title:
+        ax.set_title(title)
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
 
@@ -996,6 +1053,81 @@ def plot_neuron_cluster_heatmap(re_IN, re_IN_clu, DE_g=True, cmap=HEATMAP_CMAP, 
     plt.xlabel("")
     plt.ylabel("")
     plt.tight_layout()
+    plt.show()
+
+# ======================================
+# VSI at the location of transcripts
+# ======================================
+def plot_marker_vsi_hist(ax, si, ss, signal_thr, label, cmap=_BIH_CMAP, xlim=(0.125, 64), log=False, ylabel=False, xticks=None):
+    """
+    Plot a histogram of VSI values for markers above a given signal threshold.
+
+    Parameters:
+    - ax: The axis on which to plot the histogram.
+    - si: Signal integrity values for marker transcripts.
+    - ss: Signal strength values for marker transcripts.
+    - signal_thr: Threshold below which the signal is faded out in the plot.
+    - label: Title label for the subplot.
+    - cmap: Colormap to apply to histogram bars (default: _BIH_CMAP).
+    - xlim: X-axis limits (default: (0.125, 64)).
+    - log: Whether to use logarithmic x-axis (default: False).
+    - ylabel: Whether to display y-axis label (default: False).
+    - xticks: Custom x-axis tick positions if using log scale.
+    """
+
+    # Compute histogram of signal integrity for cells with signal > threshold
+    vals, bins = np.histogram(
+        si[ss > signal_thr],
+        bins=50,
+        range=(0, 1),
+        density=True,
+    )
+
+    # Calculate bin centers for plotting
+    bin_centers = 0.5 * (bins[:-1] + bins[1:])
+
+    # Draw horizontal bars with color mapped to bin centers
+    colors = cmap(bin_centers)
+    bars = ax.barh(bin_centers, vals, height=0.01)
+    for i, bar in enumerate(bars):
+        bar.set_color(colors[i])
+
+    # Set x-axis scale and limits
+    if log:
+        ax.set_xscale('log', base=2)
+        ax.set_xlim(xlim)
+        ax.xaxis.set_major_locator(LogLocator(base=2, subs=[1], numticks=10))
+        if xticks:
+            ax.set_xticks(xticks)
+    else:
+        ax.set_xlim(xlim)
+
+    # Set y-axis limits and optional label
+    ax.set_ylim(0, 1)
+    if ylabel:
+        ax.set_ylabel("Signal Integrity", fontsize=13)
+        ax.yaxis.set_label_position("right")
+
+    # Style tweaks: invert x-axis, right-side ticks, hide unnecessary spines
+    ax.invert_xaxis()
+    ax.yaxis.tick_right()
+    ax.spines[["top", "left"]].set_visible(False)
+
+    # Set subplot title
+    ax.set_title(label, fontsize=13)
+
+
+# ======================================
+# VSI distribution under conditions
+# ======================================
+def histogram_comparison(si1, ss1, si2, ss2, si3, ss3, si4, ss4, signal_threshold, xlim,log, cmap=_BIH_CMAP):
+    fig, ax = plt.subplots(1, 4, figsize=(16, 9), dpi=600)  # Create a row of 4 subplots
+    # ax, si, ss, signal_thr, label, cmap=_BIH_CMAP, xlim=(0.125, 64), log=False, ylabel=False, xticks=None
+    plot_marker_vsi_hist(ax[0], si1, ss1, signal_threshold, label="All Signals", xlim=xlim, log=log)
+    plot_marker_vsi_hist(ax[1], si2, ss2, signal_threshold, label="Excluding MOD1 Marker", xlim=xlim, log=log)
+    plot_marker_vsi_hist(ax[2], si3, ss3, signal_threshold, label="Excluding MOD2 Marker", xlim=xlim, log=log)
+    plot_marker_vsi_hist(ax[3], si4, ss4, signal_threshold, label="Excluding MOD Marker", xlim=xlim, log=log, ylabel=True)
+    plt.tight_layout()  # Adjust spacing to prevent overlap
     plt.show()
 
 

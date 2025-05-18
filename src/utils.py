@@ -5,18 +5,20 @@ from natsort import natsorted
 
 from shapely.geometry import Polygon, Point
 
+from scipy import sparse
 from scipy.io import mmread
 from scipy.stats import spearmanr
 from scipy.cluster.hierarchy import linkage, leaves_list
 
-import umap
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import MaxAbsScaler
 from sklearn.decomposition import PCA
 from sklearn.cluster import KMeans, AgglomerativeClustering
 from sklearn.neighbors import NearestNeighbors
 
 import igraph as ig
 import leidenalg as la
+
+import umap
 
 import matplotlib.pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap
@@ -45,11 +47,189 @@ _BIH_CMAP_re = LinearSegmentedColormap.from_list(
 # ======================================
 # Load Data
 # ======================================
-import pandas as pd
-import numpy as np
-import anndata as ad
-from scipy import sparse
-from sklearn.preprocessing import MaxAbsScaler
+def load_merfish_signal_df(file_path):
+    """
+    Load and process MERFISH signal coordinate data.
+
+    Parameters:
+    - file_path (str or Path): Path to the MERFISH CSV file.
+
+    Returns:
+    - pd.DataFrame: Cleaned signal coordinate dataframe with adjusted coordinates.
+    """
+    columns = [
+        "Centroid_X",
+        "Centroid_Y",
+        "Centroid_Z",
+        "Gene_name",
+        "Cell_name",
+        "Total_brightness",
+        "Area",
+        "Error_bit",
+        "Error_direction",
+    ]
+
+    df = pd.read_csv(file_path, usecols=columns).rename(
+        columns={
+            "Centroid_X": "x",
+            "Centroid_Y": "y",
+            "Centroid_Z": "z",
+            "Gene_name": "gene",
+        }
+    )
+
+    # Remove dummy molecules
+    df = df.loc[~df["gene"].str.contains("Blank|NegControl")].copy()
+
+    # Convert gene column to category dtype
+    df["gene"] = df["gene"].astype("category")
+
+    # Shift coordinates to remove negative values
+    df_x_min = df["x"].min()
+    df_y_min = df["y"].min()
+    df["x"] = df["x"] - df_x_min
+    df["y"] = df["y"] - df_y_min
+
+    return df, df_x_min, df_y_min
+
+def load_banksy_result(banksy_path, coordinate_x_m=0, coordinate_y_m=0, bregma_value=-0.24):
+    """
+    Load and preprocess Banksy clustering result.
+
+    Parameters:
+    - banksy_path (Path or str): Path to 'banksy_cluster.txt'.
+    - coordinate_x_m (float): Minimum x coordinate for shifting.
+    - coordinate_y_m (float): Minimum y coordinate for shifting.
+    - bregma_value (float): Bregma slice to select (default: -0.24).
+
+    Returns:
+    - pd.DataFrame: Processed Banksy clustering result for specified Bregma slice.
+    """
+    columns = ["Centroid_X", "Centroid_Y", "Bregma", "lam0.2"]
+
+    banksy_result = pd.read_csv(
+        banksy_path,
+        usecols=columns,
+        sep="\t"
+    ).rename(
+        columns={
+            "Centroid_X": "x",
+            "Centroid_Y": "y",
+            "Bregma": "Bregma",
+            "lam0.2": "banksy_cluster",
+        }
+    )
+
+    # Select the specified Bregma slice
+    banksy_result = banksy_result[banksy_result["Bregma"] == bregma_value]
+
+    # Shift coordinates
+    banksy_result["x"] = banksy_result["x"] - coordinate_x_m
+    banksy_result["y"] = banksy_result["y"] - coordinate_y_m
+
+    return banksy_result.copy()
+
+
+def load_merfish_data(data_path, banksy_result_df, coordinate_x_m=0, coordinate_y_m=0, animal_id=1, bregma_value=-0.24):
+    """
+    Load and process MERFISH single-cell data, assign BankSY clusters, shift coordinates.
+
+    Parameters:
+    - data_path (Path or str): Path to 'merfish_all_cells.csv'.
+    - banksy_result_df (pd.DataFrame): Preloaded BankSY result with 'banksy_cluster'.
+    - coordinate_x_m (float): Minimum x for alignment shift.
+    - coordinate_y_m (float): Minimum y for alignment shift.
+    - animal_id (int): ID of the animal to filter on.
+    - bregma_value (float): Bregma slice to filter.
+
+    Returns:
+    - pd.DataFrame: Processed MERFISH data.
+    """
+    
+    df = pd.read_csv(data_path).rename(columns={"Centroid_X": "x", "Centroid_Y": "y"})
+
+    # Drop unwanted columns
+    df = df.drop(columns=[col for col in df.columns if col == 'Fos' or col.startswith('Blank_')])
+
+    # Filter data
+    df = df[df["Cell_class"] != "Ambiguous"]
+    df = df[df["Animal_ID"] == animal_id]
+    df = df[df["Bregma"] == bregma_value]
+
+    # Coordinate shift
+    df["x"] -= coordinate_x_m
+    df["y"] -= coordinate_y_m
+
+    # Assign BankSY cluster (merge safer than indexing by order)
+    df = df.merge(
+        banksy_result_df[["x", "y", "banksy_cluster"]],
+        on=["x", "y"],
+        how="left"
+    )
+    df = df.rename(columns={"banksy_cluster": "banksy"})
+
+    # Class mapping
+    cell_class_m = {
+        'Astrocyte': 'Astrocyte',
+        'Endothelial 1': 'Endothelial',
+        'Endothelial 2': 'Endothelial',
+        'Endothelial 3': 'Endothelial',
+        'Ependymal': 'Ependymal',
+        'Excitatory': 'Excitatory',
+        'Inhibitory': 'Inhibitory',
+        'Microglia': 'Microglia',
+        'OD Immature 1': 'OD Immature',
+        'OD Immature 2': 'OD Immature',
+        'OD Mature 1': 'OD Mature',
+        'OD Mature 2': 'OD Mature',
+        'OD Mature 3': 'OD Mature',
+        'OD Mature 4': 'OD Mature',
+        'Pericytes': 'Pericytes'
+    }
+
+    df["Cell_class"] = df["Cell_class"].map(cell_class_m).fillna("Other")
+
+    # Sort for nicer visualization/grouping
+    df = df.sort_values(by="Cell_class")
+
+    return df.copy()
+
+
+def load_boundaries_data(boundary_path, merfish_data_df, coordinate_x_m=0, coordinate_y_m=0):
+    """
+    Load and process boundary information, align with MERFISH cells.
+
+    Parameters:
+    - boundary_path (Path or str): Path to 'cellboundaries_example_animal.csv'.
+    - merfish_data_df (pd.DataFrame): Preprocessed MERFISH data with Cell_ID.
+    - coordinate_x_m (float): Minimum x shift.
+    - coordinate_y_m (float): Minimum y shift.
+
+    Returns:
+    - pd.DataFrame: Processed boundary data with shifted coordinates and metadata.
+    """
+    df = pd.read_csv(boundary_path)
+    df = df.dropna(subset=["boundaryX", "boundaryY"])
+
+    # Filter and merge metadata
+    cell_ids = merfish_data_df["Cell_ID"]
+    df = df[df["feature_uID"].isin(cell_ids)]
+    df = df.merge(
+        merfish_data_df[["Cell_ID", "x", "y", "banksy"]],
+        left_on="feature_uID",
+        right_on="Cell_ID",
+        how="inner"
+    ).drop(columns=["Cell_ID"])
+
+    # Convert boundary strings to lists and apply shift
+    df["boundaryX"] = df["boundaryX"].apply(lambda x: [float(i) for i in x.split(";")] if isinstance(x, str) else x)
+    df["boundaryY"] = df["boundaryY"].apply(lambda x: [float(i) for i in x.split(";")] if isinstance(x, str) else x)
+
+    df["boundaryX"] = df["boundaryX"].apply(lambda x: [i - coordinate_x_m for i in x] if isinstance(x, list) else x)
+    df["boundaryY"] = df["boundaryY"].apply(lambda x: [i - coordinate_y_m for i in x] if isinstance(x, list) else x)
+
+    return df.copy()
+
 
 def load_scRNA_data(mtx_path, barcodes_path, genes_path, meta_path, cell_class_filter, neuron_cluster = False):
     # Read count matrix and metadata files
@@ -290,6 +470,37 @@ def get_cluster_boundaries(cluster_labels):
 
 
 # ======================================
+# VSI at the location of transcripts
+# ======================================
+def marker_transcripts_vsi(signal_df, signal_strength, signal_integrity, gene):
+    # Filter to keep only rows for the given gene
+    gene_signal = signal_df[signal_df['gene'].isin(gene)].copy()
+
+    # Initialize empty masks with same shape as signal arrays
+    mask = np.zeros_like(signal_strength, dtype=bool)
+
+    # Ensure coordinates are within bounds
+    valid_coords = (
+        (gene_signal['x'] >= 0) & (gene_signal['x'] < signal_strength.shape[1]) &
+        (gene_signal['y'] >= 0) & (gene_signal['y'] < signal_strength.shape[0])
+    )
+    gene_signal = gene_signal[valid_coords]
+
+    # Get x and y coordinates
+    xs = gene_signal['x'].astype(int).values
+    ys = gene_signal['y'].astype(int).values
+
+    # Mark positions of this gene as True in the mask
+    mask[ys, xs] = True
+
+    # Apply the mask to extract the 2D arrays
+    gene_strength = np.where(mask, signal_strength, 0)
+    gene_integrity = np.where(mask, signal_integrity, 0)
+
+    return gene_strength, gene_integrity
+
+
+# ======================================
 # Correlated Genes for Each Marker
 # ======================================
 def find_corr_genes(gene, sc_data):
@@ -331,53 +542,6 @@ def process_related_genes(DE_genes, sc_data, top_n=26):
         related_genes.update(top_genes)
 
     return list(related_genes)
-
-def process_related_genes_check(DE_genes, sc_data, top_n=26):
-    """
-    For a list of DE genes, find top correlated genes per gene.
-
-    Parameters:
-    - DE_genes (list): List of gene names.
-    - sc_data (pd.DataFrame): Expression matrix (genes x cells).
-    - top_n (int): Number of top correlated genes to retrieve per input gene.
-
-    Returns:
-    - list: Unique list of top correlated genes.
-    """
-    related_genes = set()
-    failed_genes = []
-    too_few_corr = {}
-
-    print(f"=== Debug Summary ===")
-    print(f"🧬 Total DE genes given: {len(DE_genes)}")
-
-    for gene in sorted(set(DE_genes)):
-        if gene not in sc_data.index:
-            failed_genes.append(gene)
-            print(f"❌ {gene} not in sc_data, skipped.")
-            continue
-
-        correlated = find_corr_genes(gene, sc_data)
-        if gene in correlated.index:
-            correlated = correlated.drop(labels=[gene], errors='ignore')
-
-        top_genes = correlated.iloc[:top_n].index.tolist()
-        related_genes.update(top_genes)
-
-        if len(top_genes) < top_n:
-            too_few_corr[gene] = len(top_genes)
-            print(f"⚠️ {gene}: Only got {len(top_genes)} correlated genes (expected {top_n})")
-        else:
-            print(f"✅ {gene}: Added {len(top_genes)} genes")
-
-    print(f"\n=== Summary ===")
-    print(f"✅ Processed DE genes: {len(DE_genes) - len(failed_genes)}")
-    print(f"❌ Skipped genes: {len(failed_genes)} — {failed_genes}")
-    print(f"⚠️ DE genes with < {top_n} correlated genes: {len(too_few_corr)} — {too_few_corr}")
-    print(f"📦 Total unique related genes returned: {len(related_genes)}")
-
-    return list(related_genes)
-
 
 
 # ======================================
@@ -524,3 +688,6 @@ def hierarchical_clustering(data_for_clustering, k=2, n_PCs=5, cmap_re=False):
     plt.show()
 
     return labels
+
+
+
