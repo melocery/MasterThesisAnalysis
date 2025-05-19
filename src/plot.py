@@ -551,13 +551,13 @@ def plot_celltypes(
 
     # Display region (whole image or custom ROI)
     if x_range is not None:
-        ax[0].set_xlim(*x_range)
+        ax.set_xlim(*x_range)
     else:
-        ax[0].set_xlim(0, cell_type.shape[1])
+        ax.set_xlim(0, cell_type.shape[1])
     if y_range is not None:
-        ax[0].set_ylim(*y_range)
+        ax.set_ylim(*y_range)
     else:
-        ax[0].set_ylim(0, cell_type.shape[0])
+        ax.set_ylim(0, cell_type.shape[0])
     
     ax.set_xticks([])
     ax.set_yticks([])
