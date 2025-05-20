@@ -215,7 +215,7 @@ def load_boundaries_data(boundary_path, merfish_data_df, coordinate_x_m=0, coord
     cell_ids = merfish_data_df["Cell_ID"]
     df = df[df["feature_uID"].isin(cell_ids)]
     df = df.merge(
-        merfish_data_df[["Cell_ID", "x", "y", "banksy"]],
+        merfish_data_df[["Cell_ID", "x", "y", "banksy", "Cell_class"]],
         left_on="feature_uID",
         right_on="Cell_ID",
         how="inner"
