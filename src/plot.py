@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+from typing import Any
 
 from scipy.interpolate import interp1d
 from scipy.spatial import ConvexHull
@@ -17,10 +18,11 @@ from matplotlib.patches import Circle
 from matplotlib.colors import Normalize
 from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.ticker import LogLocator
+from matplotlib_scalebar.scalebar import ScaleBar
 
 import seaborn as sns
 
-_BIH_CMAP = LinearSegmentedColormap.from_list(
+BIH_CMAP = LinearSegmentedColormap.from_list(
     "BIH",
     [
         "#430541",
@@ -34,10 +36,24 @@ _BIH_CMAP = LinearSegmentedColormap.from_list(
 )
 
 HEATMAP_CMAP = sns.color_palette("RdYlBu_r", as_cmap=True)
+SCALEBAR_PARAMS: dict[str, Any] = {"dx": 1, "units": "um"}
 
 # ======================================
 # Vertical Signal Integrity Map
 # ======================================
+def _plot_scalebar(ax, dx=1, units="um", **kwargs):
+    """
+    Add a scalebar to the given axes.
+
+    Parameters:
+        ax (matplotlib.axes.Axes): Target axes to attach the scalebar.
+        dx (float): Real-world size per pixel.
+        units (str): Unit label for the scalebar.
+        kwargs: Additional keyword arguments for ScaleBar.
+    """
+    ax.add_artist(ScaleBar(dx, units=units, **kwargs))
+
+
 def plot_VSI_map(
     cell_integrity,
     cell_strength,
@@ -45,8 +61,9 @@ def plot_VSI_map(
     figure_height=10,
     cmap="BIH",
     side_display=None,  # "hist", "colorbar", or None
+    scalebar: dict | None = SCALEBAR_PARAMS,
     boundary_df=None,
-    plot_boundarys=False,
+    plot_boundary=False,
     boundary_color="yellow",
     boundary_width=1.5,
     cell_centroid=None,
@@ -65,8 +82,9 @@ def plot_VSI_map(
         figure_height (float): Height of the figure in inches.
         cmap (str or colormap): Colormap name or object.
         side_display (str or None): "hist", "colorbar", or None.
+        scalebar (dict or None): Dictionary of parameters for drawing a scalebar.
         boundary_df (pd.DataFrame): Optional DataFrame with boundaryX and boundaryY columns.
-        plot_boundarys (bool): Whether to draw boundaries.
+        plot_boundary (bool): Whether to draw boundaries.
         boundary_color (str): Color of the boundary lines.
         boundary_width (float): Width of the boundary lines.
         cell_centroid (pd.DataFrame): DataFrame with x and y coordinates.
@@ -84,7 +102,7 @@ def plot_VSI_map(
         # Handle colormap
         if cmap == "BIH":
             try:
-                cmap = _BIH_CMAP
+                cmap = BIH_CMAP
             except NameError:
                 raise ValueError("BIH colormap is not defined.")
 
@@ -117,8 +135,11 @@ def plot_VSI_map(
             vmax=1,
         )
         ax[0].invert_yaxis()
-        ax[0].set_xticks([])
-        ax[0].set_yticks([])
+        ax[0].spines[["top", "right"]].set_visible(False)
+
+        if scalebar is not None:
+            _plot_scalebar(ax[0], **scalebar)
+
 
         # Display region (whole image or custom ROI)
         if x_range is not None:
@@ -135,10 +156,13 @@ def plot_VSI_map(
             ax[0].scatter(cell_centroid['x'], cell_centroid['y'], s=1, c='orange', alpha=0.1)
 
         # Optional boundaries
-        if plot_boundarys and boundary_df is not None:
+        if plot_boundary and boundary_df is not None:
             for _, row in boundary_df.iterrows():
                 ax[0].plot(row['boundaryX'], row['boundaryY'],
                            c=boundary_color, linewidth=boundary_width)
+            ax[0].set_xticks([])
+            ax[0].set_yticks([])
+            ax[0].spines[["top", "right"]].set_visible(True)
 
         # Optional histogram
         if show_hist:
@@ -166,6 +190,9 @@ def plot_VSI_map(
             plt.show()
         else:
             plt.close(fig)
+
+        if scalebar is not None:
+            _plot_scalebar(ax[0], **scalebar)
 
     return fig
 
@@ -302,7 +329,7 @@ def plot_vsi_distribution_comparison(
         # Define colormap
         if cmap == "BIH":
             try:
-                cmap = _BIH_CMAP
+                cmap = BIH_CMAP
             except NameError:
                 raise ValueError("BIH colormap is not defined.")
         
@@ -323,7 +350,7 @@ def plot_vsi_distribution_comparison(
     return vals1, bins1, vals2, bins2
 
 
-def plot_normalized_histogram(vals1, vals2, bins, epsilon, ylim=(1e-1, 10**10), title=None, cmap=_BIH_CMAP, xlab="Signal Integrity", ylab="VSI Density of MOD2/MOD1"):
+def plot_normalized_histogram(vals1, vals2, bins, epsilon, ylim=(1e-1, 10**10), title=None, cmap=BIH_CMAP, xlab="Signal Integrity", ylab="VSI Density of MOD2/MOD1"):
     vals = vals2 / (vals1 + epsilon)
     bin_centers = (bins[:-1] + bins[1:]) / 2
 
@@ -616,16 +643,13 @@ def plot_circular_neighborhood(
 
     # Plot boundaries
     if true_boundary:
-        for _, row in boundaries_filtered.iterrows():
-            ax.plot(row['boundaryX'], row['boundaryY'], c='grey', lw=1)
-        for _, row in MOD_filtered.iterrows():
-            ax.plot(row['boundaryX'], row['boundaryY'], c='#00bfae', lw=1)
-        # Legend handles
-        ax.plot([], [], color='grey', lw=1, label="Other Cells Boundary")
-        ax.plot([], [], color='#00bfae', lw=1, label="MOD Cells Boundary")
+        for df, color, label in [(boundaries_filtered, 'grey', "Other Cells Boundary"), (MOD_filtered, '#00bfae', "MOD Cells Boundary")]:
+            for _, row in df.iterrows():
+                ax.plot(row['boundaryX'], row['boundaryY'], c=color, lw=1.3)
+            ax.plot([], [], color=color, lw=1.3, label=label)
 
     # Plot concentric rings
-    cmap_rings = plt.get_cmap('tab20')
+    cmap_rings = plt.get_cmap('Set2')
     for idx, diameter in enumerate(diameters):
         color = cmap_rings(idx)
         for _, row in centroid_filtered.iterrows():
@@ -636,7 +660,7 @@ def plot_circular_neighborhood(
                 linewidth=0.7, alpha=0.7
             )
             ax.add_patch(circle)
-        ax.plot([], [], color=color, label=f'Diameter={diameter}')
+        ax.plot([], [], color=color, label=f'Diameter={diameter}', lw=0.7)
 
     # Final touches
     ax.legend(loc="upper left", bbox_to_anchor=(1.02, 1), fontsize=8, frameon=False, markerscale=1.5, ncol=1)
@@ -734,11 +758,11 @@ def plot_knn_neighborhood(signals_df, centroid_df, MOD_boundaries, boundaries_df
     if true_boundary:
         for df, color, label in [(boundaries_filtered, 'grey', "Other Cells Boundary"), (MOD_filtered, '#00bfae', "MOD Cells Boundary")]:
             for _, row in df.iterrows():
-                ax.plot(row['boundaryX'], row['boundaryY'], c=color, lw=1)
-            ax.plot([], [], color=color, lw=1, label=label)
+                ax.plot(row['boundaryX'], row['boundaryY'], c=color, lw=1.3)
+            ax.plot([], [], color=color, lw=1.3, label=label)
 
     # Plot convex hulls around kNN
-    cmap_rings = mpl.colormaps['tab20']
+    cmap_rings = mpl.colormaps['Set2']
     for idx, k in enumerate(neighbors):
         color = cmap_rings(idx / len(neighbors))
         label_added = False
@@ -752,7 +776,7 @@ def plot_knn_neighborhood(signals_df, centroid_df, MOD_boundaries, boundaries_df
 
             hull = ConvexHull(neighbor_pts)
             for simplex in hull.simplices:
-                ax.plot(neighbor_pts[simplex, 0], neighbor_pts[simplex, 1], color=color, lw=1,
+                ax.plot(neighbor_pts[simplex, 0], neighbor_pts[simplex, 1], color=color, lw=0.7,
                         label=f"k={k} NN" if not label_added else None)
                 label_added = True
 
@@ -1058,7 +1082,7 @@ def plot_neuron_cluster_heatmap(re_IN, re_IN_clu, DE_g=True, cmap=HEATMAP_CMAP, 
 # ======================================
 # VSI at the location of transcripts
 # ======================================
-def plot_marker_vsi_hist(ax, si, ss, signal_thr, label, cmap=_BIH_CMAP, xlim=(0.125, 64), log=False, ylabel=False, xticks=None):
+def plot_marker_vsi_hist(ax, si, ss, signal_thr, label, cmap=BIH_CMAP, xlim=(0.125, 64), log=False, ylabel=False, xticks=None):
     """
     Plot a histogram of VSI values for markers above a given signal threshold.
 
@@ -1068,7 +1092,7 @@ def plot_marker_vsi_hist(ax, si, ss, signal_thr, label, cmap=_BIH_CMAP, xlim=(0.
     - ss: Signal strength values for marker transcripts.
     - signal_thr: Threshold below which the signal is faded out in the plot.
     - label: Title label for the subplot.
-    - cmap: Colormap to apply to histogram bars (default: _BIH_CMAP).
+    - cmap: Colormap to apply to histogram bars (default: BIH_CMAP).
     - xlim: X-axis limits (default: (0.125, 64)).
     - log: Whether to use logarithmic x-axis (default: False).
     - ylabel: Whether to display y-axis label (default: False).
@@ -1120,9 +1144,9 @@ def plot_marker_vsi_hist(ax, si, ss, signal_thr, label, cmap=_BIH_CMAP, xlim=(0.
 # ======================================
 # VSI distribution under conditions
 # ======================================
-def histogram_comparison(si1, ss1, si2, ss2, si3, ss3, si4, ss4, signal_threshold, xlim,log, cmap=_BIH_CMAP):
+def histogram_comparison(si1, ss1, si2, ss2, si3, ss3, si4, ss4, signal_threshold, xlim,log, cmap=BIH_CMAP):
     fig, ax = plt.subplots(1, 4, figsize=(16, 9), dpi=600)  # Create a row of 4 subplots
-    # ax, si, ss, signal_thr, label, cmap=_BIH_CMAP, xlim=(0.125, 64), log=False, ylabel=False, xticks=None
+    # ax, si, ss, signal_thr, label, cmap=BIH_CMAP, xlim=(0.125, 64), log=False, ylabel=False, xticks=None
     plot_marker_vsi_hist(ax[0], si1, ss1, signal_threshold, label="All Signals", xlim=xlim, log=log)
     plot_marker_vsi_hist(ax[1], si2, ss2, signal_threshold, label="Excluding MOD1 Marker", xlim=xlim, log=log)
     plot_marker_vsi_hist(ax[2], si3, ss3, signal_threshold, label="Excluding MOD2 Marker", xlim=xlim, log=log)
