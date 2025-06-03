@@ -73,7 +73,7 @@ Assessed VSI at specific marker locations:
 - Neuron-related markers exhibit broader distributions
 
 
-### VSI Under Marker Exclusion
+### VSI Under Marker Exclusion Scenarios
 
 Compared VSI after excluding transcripts under different conditions:
 
