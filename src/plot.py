@@ -447,7 +447,7 @@ def plot_vsi_qqplot(vals1, bins1, vals2, bins2,
     q2 = np.clip(q2, 0, 1)
 
     # Create the figure and axis
-    fig, ax = plt.subplots(figsize=(6, 6), dpi=300)
+    fig, ax = plt.subplots(figsize=(6, 6), dpi=600)
 
     # Plot the Q-Q data
     if use_cmap:
