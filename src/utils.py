@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import anndata as ad
 from natsort import natsorted
+from pandas.api.types import CategoricalDtype
 
 from shapely.geometry import Polygon
 from matplotlib.path import Path
@@ -261,6 +262,10 @@ def load_scRNA_data(mtx_path, barcodes_path, genes_path, meta_path, cell_class_f
     else:
         adata.obs = meta.loc[adata.obs_names, ["Cell_class"]].copy()
     adata.obs["Cell_class"] = adata.obs["Cell_class"].map(cell_class_filter)
+
+    cell_class_order = list(cell_class_filter.values())
+    cat_dtype = CategoricalDtype(categories=cell_class_order, ordered=True)
+    adata.obs["Cell_class"] = adata.obs["Cell_class"].astype(cat_dtype)
 
     # Filter cells with mitochondrial RNA fraction >= 20%
     mt_mask = adata.var_names.str.startswith("mt")
