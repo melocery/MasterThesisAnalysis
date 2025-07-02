@@ -14,11 +14,13 @@ from sklearn.decomposition import PCA
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
+import matplotlib.lines as mlines
 from matplotlib.patches import Circle
 from matplotlib.colors import Normalize
 from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.ticker import LogLocator
 from matplotlib_scalebar.scalebar import ScaleBar
+
 
 import seaborn as sns
 
@@ -41,17 +43,28 @@ SCALEBAR_PARAMS: dict[str, Any] = {"dx": 1, "units": "um"}
 # ======================================
 # Vertical Signal Integrity Map
 # ======================================
-def _plot_scalebar(ax, dx=1, units="um", **kwargs):
-    """
-    Add a scalebar to the given axes.
+SCALEBAR_PARAMS: dict[str, Any] = {
+    "dx": 1,
+    "units": "um",
+    "length_fraction": 0.1,
+    "location": "lower right",
+    "pad": 0.1,
+    "frameon": False
+}
 
-    Parameters:
-        ax (matplotlib.axes.Axes): Target axes to attach the scalebar.
-        dx (float): Real-world size per pixel.
-        units (str): Unit label for the scalebar.
-        kwargs: Additional keyword arguments for ScaleBar.
-    """
-    ax.add_artist(ScaleBar(dx, units=units, **kwargs))
+def _plot_scalebar(ax, dx=1, units="um", fontsize=5, color="black", box_alpha=0, **kwargs):
+    scalebar = ScaleBar(
+        dx,
+        units=units,
+        scale_loc="top", 
+        sep=1,
+        **kwargs
+    )
+    scalebar.set_font_properties({"size": fontsize})
+    scalebar.linewidth = 0.3
+    scalebar.box_alpha = box_alpha
+    scalebar.color = color
+    ax.add_artist(scalebar)
 
 
 def plot_VSI_map(
@@ -70,7 +83,8 @@ def plot_VSI_map(
     plot_centroid=False,
     x_range=None,
     y_range=None,
-    show=False
+    show=False,
+    plot_rasterized=True
 ):
     """
     Visualize the VSI (signal integrity) map with optional histogram/colorbar and overlays.
@@ -90,6 +104,7 @@ def plot_VSI_map(
         cell_centroid (pd.DataFrame): DataFrame with x and y coordinates.
         plot_centroid (bool): Whether to overlay centroids.
         x_range, y_range (list or tuple): Display range for x and y axes.
+        plot_rasterized (bool): Whether to rasterize.
     """
     if not (isinstance(cell_integrity, np.ndarray) and cell_integrity.ndim == 2):
         raise ValueError("cell_integrity must be a 2D numpy array.")
@@ -133,13 +148,13 @@ def plot_VSI_map(
             alpha=((cell_strength / signal_threshold).clip(0, 1) ** 2),
             vmin=0,
             vmax=1,
+            rasterized=plot_rasterized
         )
         ax[0].invert_yaxis()
-        ax[0].spines[["top", "right"]].set_visible(False)
+        # ax[0].spines[["top", "right"]].set_visible(False)
 
         if scalebar is not None:
-            _plot_scalebar(ax[0], **scalebar)
-
+            _plot_scalebar(ax[0], dx=1, units="um", location="lower left", length_fraction=0.2, fontsize=6, box_alpha=0, color="white")
 
         # Display region (whole image or custom ROI)
         if x_range is not None:
@@ -160,9 +175,9 @@ def plot_VSI_map(
             for _, row in boundary_df.iterrows():
                 ax[0].plot(row['boundaryX'], row['boundaryY'],
                            c=boundary_color, linewidth=boundary_width)
-            ax[0].set_xticks([])
-            ax[0].set_yticks([])
-            ax[0].spines[["top", "right"]].set_visible(True)
+        
+        ax[0].set_xticks([])
+        ax[0].set_yticks([])
 
         # Optional histogram
         if show_hist:
@@ -179,7 +194,7 @@ def plot_VSI_map(
             ax[1].set_xticks([])
             ax[1].yaxis.tick_right()
             ax[1].spines[["top", "bottom", "left"]].set_visible(False)
-            ax[1].set_ylabel("signal integrity")
+            ax[1].set_ylabel("vertical signal integrity")
             ax[1].yaxis.set_label_position("right")
 
         elif show_colorbar:
@@ -193,6 +208,7 @@ def plot_VSI_map(
 
         if scalebar is not None:
             _plot_scalebar(ax[0], **scalebar)
+        
 
     return fig
 
@@ -238,6 +254,7 @@ def plot_vsi_with_named_squares(
     if named_squares:
         ax = fig.axes[0]
         plot_named_squares(ax, named_squares)
+    
 
     return fig
 
@@ -271,6 +288,7 @@ def plot_histogram(ax, cell_integrity, cell_strength, signal_threshold, cmap, la
         range=(0, 1),
         density=True,
         edgecolor='black',
+        linewidth=0.5,
         alpha=0.8
     )
     
@@ -282,14 +300,14 @@ def plot_histogram(ax, cell_integrity, cell_strength, signal_threshold, cmap, la
     ax.set_xlim(0, 1)
     ax.set_ylim(ylim)
     ax.set_yscale('log', base=2)
-    ax.set_ylabel("Density")
-    ax.set_xlabel(label)
+    ax.set_ylabel("Density", fontsize=5)
+    ax.set_xlabel(label, fontsize=5)
     ax.spines[["top", "right"]].set_visible(False)
-    ax.yaxis.set_tick_params(labelright=False)
-    ax.xaxis.set_tick_params(labelsize=8)
+    ax.yaxis.set_tick_params(labelright=False,labelsize=5)
+    ax.xaxis.set_tick_params(labelsize=5)
 
     if title:
-        ax.set_title(title, fontsize=15)
+        ax.set_title(title, fontsize=7)
     
     return vals, bins
 
@@ -338,7 +356,7 @@ def plot_vsi_distribution_comparison(
             
         # Plot histograms
         vals1, bins1 = plot_histogram(
-            ax[0], cell_integrity_1, cell_strength_1, signal_threshold, cmap, label="MOD1 Signal Integrity", ylim=ylim,title=title
+            ax[0], cell_integrity_1, cell_strength_1, signal_threshold, cmap, label="MOD1 Signal Integrity", ylim=ylim, title=title
         )
         vals2, bins2 = plot_histogram(
             ax[1], cell_integrity_2, cell_strength_2, signal_threshold, cmap, label="MOD2 Signal Integrity", ylim=ylim
@@ -354,7 +372,7 @@ def plot_normalized_histogram(vals1, vals2, bins, epsilon, ylim=(1e-1, 10**10), 
     vals = vals2 / (vals1 + epsilon)
     bin_centers = (bins[:-1] + bins[1:]) / 2
 
-    fig, ax = plt.subplots(figsize=(7, 7), dpi=600)
+    fig, ax = plt.subplots(figsize=(6/2.54, 6/2.54), dpi=600)
 
     # Create the histogram bars
     bars = ax.bar(bin_centers, vals, width=np.diff(bins), edgecolor="black", alpha=0.7, linewidth=0.3)
@@ -363,18 +381,18 @@ def plot_normalized_histogram(vals1, vals2, bins, epsilon, ylim=(1e-1, 10**10), 
     for i, bar in enumerate(bars):
         bar.set_facecolor(cmap(i / len(bars)))  # Set color based on the colormap
 
-    ax.set_ylabel(ylab)
-    ax.set_xlabel(xlab)
+    ax.set_ylabel(ylab, fontsize=6)
+    ax.set_xlabel(xlab, fontsize=6)
     ax.spines[["top", "right"]].set_visible(False)
-    ax.yaxis.set_tick_params(labelright=False)
-    ax.xaxis.set_tick_params(labelsize=8)
+    ax.yaxis.set_tick_params(labelright=False, labelsize=5)
+    ax.xaxis.set_tick_params(labelsize=5)
     # Set the y-axis scale to log
     ax.set_yscale('log')
     # Add a horizontal dashed line at y = 1 (10^0)
     ax.set_ylim(ylim)
     ax.axhline(y=1, color='black', linestyle='--', linewidth=0.5)
     if title:
-        plt.title(title, fontsize=15)
+        plt.title(title, fontsize=7)
     plt.show()
 
 
@@ -447,17 +465,17 @@ def plot_vsi_qqplot(vals1, bins1, vals2, bins2,
     q2 = np.clip(q2, 0, 1)
 
     # Create the figure and axis
-    fig, ax = plt.subplots(figsize=(6, 6), dpi=600)
+    fig, ax = plt.subplots(figsize=(6/2.54, 6/2.54), dpi=600)
 
     # Plot the Q-Q data
     if use_cmap:
         norm = Normalize(vmin=0, vmax=1)
         ax.scatter(
-            q1, q2, c=quantiles, cmap=cmap, alpha=0.6, s=17,
+            q1, q2, c=quantiles, cmap=cmap, alpha=0.6, s=7,
             norm=norm, linewidths=0.1, edgecolors='black', label=title
         )
     else:
-        ax.scatter(q1, q2, color="purple", alpha=0.6, s=17, label=title)
+        ax.scatter(q1, q2, color="purple", alpha=0.6, s=7, label=title)
 
     # Draw the y = x reference line
     ax.plot([0, 1], [0, 1], "k--", label="y = x")
@@ -466,9 +484,11 @@ def plot_vsi_qqplot(vals1, bins1, vals2, bins2,
     ax.set_xlim(0, 1)
     ax.set_ylim(0, 1)
     ax.set_aspect('equal', adjustable='box')
-    ax.set_xlabel(xlab, fontsize=13)
-    ax.set_ylabel(ylab, fontsize=13)
-    ax.legend(fontsize=11)
+    ax.set_xlabel(xlab, fontsize=6)
+    ax.set_ylabel(ylab, fontsize=6)
+    ax.yaxis.set_tick_params(labelsize=5)
+    ax.xaxis.set_tick_params(labelsize=5)
+    ax.legend(fontsize=5)
     ax.grid(False)
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
@@ -613,7 +633,7 @@ def plot_circular_neighborhood(
     MOD_filtered = filter_in_bounds(MOD_boundaries)
     boundaries_filtered = filter_in_bounds(boundaries_df)
 
-    fig, ax = plt.subplots(figsize=(8, 8), dpi=600)
+    fig, ax = plt.subplots(figsize=(8/2.54, 8/2.54), dpi=600)
 
     # Plot signal points
     if plot_top20 and top20 is not None:
@@ -624,29 +644,29 @@ def plot_circular_neighborhood(
             for i, gene in enumerate(top20)
         }
         # Background (other genes)
-        ax.scatter(signals_filtered['x'], signals_filtered['y'], s=3, color='lightgrey', alpha=0.5, label="Other Genes")
+        ax.scatter(signals_filtered['x'], signals_filtered['y'], s=1, color='lightgrey', alpha=0.5, label="Other Genes", edgecolors='none',)
         # Top 20 genes
         for gene, (marker, color) in style_dict.items():
             subset = signals_filtered[signals_filtered['gene'] == gene]
-            ax.scatter(subset['x'], subset['y'], s=3, color=color, marker=marker, alpha=0.8, label=gene)
+            ax.scatter(subset['x'], subset['y'], s=1, color=color, marker=marker, alpha=0.8, label=gene, edgecolors='none',)
     else:
         # Continuous color mapping
         norm = Normalize(vmin=0, vmax=2000)
         cmap = plt.get_cmap("Oranges")
-        ax.scatter(signals_filtered["x"], signals_filtered["y"], s=3, c=cmap(norm(signals_filtered["Total_brightness"])))
+        ax.scatter(signals_filtered["x"], signals_filtered["y"], s=1, edgecolors='none', c=cmap(norm(signals_filtered["Total_brightness"])))
         # Colorbar
         cbar = plt.colorbar(plt.cm.ScalarMappable(norm=norm, cmap=cmap), ax=ax, shrink=0.45, pad=0.02, anchor=(0.0, 0.3))
         cbar.set_label("Signal Brightness")
 
     # Plot centroids
-    ax.scatter(centroid_filtered["x"], centroid_filtered["y"], s=15, c='blue', marker="x", label="Cell Centroids")
+    ax.scatter(centroid_filtered["x"], centroid_filtered["y"], s=4, c='blue', marker="x", label="Cell Centroids")
 
     # Plot boundaries
     if true_boundary:
         for df, color, label in [(boundaries_filtered, 'grey', "Other Cells Boundary"), (MOD_filtered, '#00bfae', "MOD Cells Boundary")]:
             for _, row in df.iterrows():
-                ax.plot(row['boundaryX'], row['boundaryY'], c=color, lw=1.3)
-            ax.plot([], [], color=color, lw=1.3, label=label)
+                ax.plot(row['boundaryX'], row['boundaryY'], c=color, lw=0.6)
+            ax.plot([], [], color=color, lw=0.6, label=label)
 
     # Plot concentric rings
     cmap_rings = plt.get_cmap('Set2')
@@ -657,18 +677,24 @@ def plot_circular_neighborhood(
                 (row["x"], row["y"]),
                 radius=diameter / 2,
                 color=color, fill=False,
-                linewidth=0.7, alpha=0.7
+                linewidth=0.4#, alpha=0.4
             )
             ax.add_patch(circle)
-        ax.plot([], [], color=color, label=f'Diameter={diameter}', lw=0.7)
+        ax.plot([], [], color=color, label=f'Diameter={diameter}', lw=0.4)
 
     # Final touches
-    ax.legend(loc="upper left", bbox_to_anchor=(1.02, 1), fontsize=8, frameon=False, markerscale=1.5, ncol=1)
+    ax.legend(loc="upper left", bbox_to_anchor=(1.02, 1), fontsize=3.5, frameon=False, markerscale=1.5, ncol=1)
     ax.set_xlim(x_range)
     ax.set_ylim(y_range)
-    ax.set_xlabel("X")
-    ax.set_ylabel("Y")
+    ax.set_xlabel("X", fontsize=5)
+    ax.set_ylabel("Y", fontsize=5)
     ax.set_aspect('equal')
+    ax.xaxis.set_tick_params(labelsize=4, width=0.3)
+    ax.yaxis.set_tick_params(labelsize=4, width=0.3)
+    ax.spines['left'].set_linewidth(0.3)
+    ax.spines['bottom'].set_linewidth(0.3)
+    ax.spines['right'].set_linewidth(0.3)
+    ax.spines['top'].set_linewidth(0.3)
     plt.tight_layout()
     plt.show()
 
@@ -732,7 +758,7 @@ def plot_knn_neighborhood(signals_df, centroid_df, MOD_boundaries, boundaries_df
     MOD_filtered = filter_df(MOD_boundaries)
     boundaries_filtered = filter_df(boundaries_df)
 
-    fig, ax = plt.subplots(figsize=(8, 8), dpi=600)
+    fig, ax = plt.subplots(figsize=(8/2.54, 8/2.54), dpi=600)
     norm = Normalize(vmin=0, vmax=2000)
     cmap = plt.cm.Oranges
 
@@ -741,25 +767,25 @@ def plot_knn_neighborhood(signals_df, centroid_df, MOD_boundaries, boundaries_df
         colors = sns.color_palette("tab10", 5)
         top20_dict = {gene: (marker_styles[i % 4], colors[i % 5]) for i, gene in enumerate(top20)}
 
-        ax.scatter(signals_filtered['x'], signals_filtered['y'], s=3, color='lightgrey', alpha=0.5, label="Other Genes")
+        ax.scatter(signals_filtered['x'], signals_filtered['y'], s=3, color='lightgrey', alpha=0.5, label="Other Genes", edgecolors='none')
 
         for gene, (marker, color) in top20_dict.items():
             subset = signals_filtered[signals_filtered['gene'] == gene]
-            ax.scatter(subset['x'], subset['y'], s=3, color=color, marker=marker, alpha=0.8, label=gene)
+            ax.scatter(subset['x'], subset['y'], s=3, color=color, marker=marker, alpha=0.8, label=gene, edgecolors='none')
     else:
-        ax.scatter(signals_filtered['x'], signals_filtered['y'], s=3, c=cmap(norm(signals_filtered['Total_brightness'])))
+        ax.scatter(signals_filtered['x'], signals_filtered['y'], s=3, edgecolors='none', c=cmap(norm(signals_filtered['Total_brightness'])))
         cbar = plt.colorbar(plt.cm.ScalarMappable(norm=norm, cmap=cmap), ax=ax, shrink=0.45, pad=0.02, anchor=(0.0, 0.3))
         cbar.set_label("Signal Brightness")
 
     # Plot centroids
-    ax.scatter(centroid_filtered['x'], centroid_filtered['y'], s=15, c='blue', label="Cell Centroids", marker='x')
+    ax.scatter(centroid_filtered['x'], centroid_filtered['y'], s=4, c='blue', label="Cell Centroids", marker='x')
 
     # Plot true boundaries if requested
     if true_boundary:
         for df, color, label in [(boundaries_filtered, 'grey', "Other Cells Boundary"), (MOD_filtered, '#00bfae', "MOD Cells Boundary")]:
             for _, row in df.iterrows():
-                ax.plot(row['boundaryX'], row['boundaryY'], c=color, lw=1.3)
-            ax.plot([], [], color=color, lw=1.3, label=label)
+                ax.plot(row['boundaryX'], row['boundaryY'], c=color, lw=0.6)
+            ax.plot([], [], color=color, lw=0.6, label=label)
 
     # Plot convex hulls around kNN
     cmap_rings = mpl.colormaps['Set2']
@@ -776,16 +802,23 @@ def plot_knn_neighborhood(signals_df, centroid_df, MOD_boundaries, boundaries_df
 
             hull = ConvexHull(neighbor_pts)
             for simplex in hull.simplices:
-                ax.plot(neighbor_pts[simplex, 0], neighbor_pts[simplex, 1], color=color, lw=0.7,
+                ax.plot(neighbor_pts[simplex, 0], neighbor_pts[simplex, 1], color=color, lw=0.4,
                         label=f"k={k} NN" if not label_added else None)
                 label_added = True
 
+    ax.legend(loc="upper left", bbox_to_anchor=(1.02, 1), fontsize=3.5, frameon=False, markerscale=1.5, ncol=1)
     ax.set_xlim(x_range)
     ax.set_ylim(y_range)
-    ax.set_xlabel("X")
-    ax.set_ylabel("Y")
+    ax.set_xlabel("X", fontsize=5)
+    ax.set_ylabel("Y", fontsize=5)
     ax.set_aspect('equal')
-    ax.legend(loc="upper left", bbox_to_anchor=(1.02, 1), fontsize=8, frameon=False, markerscale=1.5, ncol=1)
+    ax.xaxis.set_tick_params(labelsize=4, width=0.3)
+    ax.yaxis.set_tick_params(labelsize=4, width=0.3)
+    ax.spines['left'].set_linewidth(0.3)
+    ax.spines['bottom'].set_linewidth(0.3)
+    ax.spines['right'].set_linewidth(0.3)
+    ax.spines['top'].set_linewidth(0.3)
+    plt.tight_layout()
     plt.show()
 
 
@@ -813,20 +846,23 @@ def plot_marker_signals(signal_df, centroid_df, title=None,
     norm = Normalize(0, 2000)
 
     if color == "MOD1":
-        color_s = plt.cm.Oranges(norm(signal_df['Total_brightness']))
-        color_c = 'red'
-    else:
-        color_s = plt.cm.Blues(norm(signal_df['Total_brightness']))
-        color_c = 'blue'
+        color_s = 'salmon'
+        color_c = 'black'
+    elif color == "MOD2":
+        color_s = 'lightblue'
+        color_c = 'black'
 
-    plt.figure(figsize=(8, 8), dpi=600)
+
+    plt.figure(figsize=(8/2.54, 8/2.54), dpi=600)
 
     plt.scatter(
         signal_df["x"],
         signal_df["y"],
-        s=1,
+        s=0.3,
         c=color_s, 
+        edgecolors='none',
         alpha=0.8,
+        rasterized=True
     )
 
     for _, row in centroid_df.iterrows():
@@ -834,7 +870,7 @@ def plot_marker_signals(signal_df, centroid_df, title=None,
             row["x"], 
             row["y"], 
             "x", 
-            fontsize=7, 
+            fontsize=2, 
             color=color_c,
             ha='center', 
             va='center'
@@ -849,19 +885,40 @@ def plot_marker_signals(signal_df, centroid_df, title=None,
         )
         ax.add_patch(rectangle_patch)
 
+    label_to_color = {
+        f'{title} Transcripts': color_s, 
+        f'{color} Cells': color_c,
+    }
+
+    handles = [
+        mlines.Line2D(
+            [0], [0],
+            marker='o' if 'Transcripts' in label else 'x',
+            color='none',
+            markerfacecolor=color if 'Transcripts' in label else 'none',
+            markeredgecolor=color if 'Cells' in label else 'none',
+            linestyle='None',
+            markersize=2,
+            label=label
+        )
+        for label, color in label_to_color.items()
+    ]
     plt.xlim(xlim)
     plt.ylim(ylim)
 
-    plt.xlabel("(μm)")
-    plt.ylabel("(μm)")
-    plt.xticks([])
-    plt.yticks([])
     if title:
-        plt.title(title, fontsize=15)
+        plt.title(f'{title} Transcripts', fontsize=6)
 
     ax = plt.gca()
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
+    ax.legend(handles=handles, fontsize=5, loc='upper center', frameon=False, 
+          bbox_to_anchor=(0.5, -0.05), ncol=2)
+    ax.xaxis.set_tick_params(labelsize=5, width=0.3)
+    ax.yaxis.set_tick_params(labelsize=5, width=0.3)
+    ax.spines['left'].set_linewidth(0.3)
+    ax.spines['bottom'].set_linewidth(0.3)
+    ax.spines['right'].set_linewidth(0.3)
+    ax.spines['top'].set_linewidth(0.3)
+    ax.set_aspect('equal')
 
     plt.show()
 
@@ -902,7 +959,7 @@ def plot_annotate_heatmap(cluster_data, cluster_labels, gene_groups=None, zscore
     expression_data = expression_data.loc[:, ~expression_data.columns.duplicated()]
 
     cluster_labels_sorted = cluster_data['Cell_class'].values
-    unique_labels = sorted(set(cluster_labels_sorted))
+    unique_labels = pd.Series(cluster_labels_sorted).unique()
 
     # Normalize
     if zscore:
@@ -1018,7 +1075,8 @@ def plot_neuron_cluster_heatmap(re_IN, re_IN_clu, DE_g=True, cmap=HEATMAP_CMAP, 
         annot=False, fmt="g", xticklabels=True, yticklabels=False,
         cmap=cmap,
         cbar=True,
-        cbar_kws={"shrink": 0.5}
+        cbar_kws={"shrink": 0.5},
+        rasterized=True
     )
 
     try:
@@ -1029,10 +1087,11 @@ def plot_neuron_cluster_heatmap(re_IN, re_IN_clu, DE_g=True, cmap=HEATMAP_CMAP, 
             0.02,
             0.2
         ])
+        cbar.ax.tick_params(labelsize=6)
     except:
         print("Warning: Failed to reposition colorbar.")
 
-    ax.set_xticklabels(ax.get_xticklabels(), fontsize=13, rotation=0)
+    ax.set_xticklabels(ax.get_xticklabels(), fontsize=7, rotation=0)
 
     cluster_boundaries = []
     for label in unique_labels:
@@ -1042,7 +1101,7 @@ def plot_neuron_cluster_heatmap(re_IN, re_IN_clu, DE_g=True, cmap=HEATMAP_CMAP, 
 
         start_idx, end_idx = class_indices[0], class_indices[-1]
         x_pos = (start_idx + end_idx) / 2
-        ax.text(-1.5, x_pos, str(label), ha='center', va='center', rotation=0, fontsize=11, color='black')
+        ax.text(-1.5, x_pos, str(label), ha='center', va='center', rotation=0, fontsize=7, color='black')
         cluster_boundaries.append(end_idx)
 
     yticks = ax.get_yticks()
@@ -1062,11 +1121,11 @@ def plot_neuron_cluster_heatmap(re_IN, re_IN_clu, DE_g=True, cmap=HEATMAP_CMAP, 
             ax.annotate(
                 label,
                 xy=(-1.5, orig_y), xytext=(-3, new_y),
-                ha='right', va='center', fontsize=10, color='black',
+                ha='right', va='center', fontsize=7, color='black',
                 arrowprops=dict(arrowstyle="-", color="gray", linewidth=1.0, alpha=0.6)
             )
         else:
-            ax.text(-1.5, new_y, label, ha='right', va='center', fontsize=10, color='black')
+            ax.text(-1.5, new_y, label, ha='right', va='center', fontsize=7, color='black')
 
     for boundary in cluster_boundaries:
         ax.axhline(y=boundary, color='purple', linestyle='--', linewidth=1)
@@ -1077,6 +1136,7 @@ def plot_neuron_cluster_heatmap(re_IN, re_IN_clu, DE_g=True, cmap=HEATMAP_CMAP, 
     plt.xlabel("")
     plt.ylabel("")
     plt.tight_layout()
+    # plt.savefig("../cluster.pdf")
     plt.show()
 
 # ======================================
@@ -1129,25 +1189,29 @@ def plot_marker_vsi_hist(ax, si, ss, signal_thr, label, cmap=BIH_CMAP, xlim=(0.1
     # Set y-axis limits and optional label
     ax.set_ylim(0, 1)
     if ylabel:
-        ax.set_ylabel("Signal Integrity", fontsize=13)
+        ax.set_ylabel("Vertical Signal Integrity", fontsize=7)
         ax.yaxis.set_label_position("right")
 
     # Style tweaks: invert x-axis, right-side ticks, hide unnecessary spines
     ax.invert_xaxis()
     ax.yaxis.tick_right()
     ax.spines[["top", "left"]].set_visible(False)
+    ax.xaxis.set_tick_params(labelsize=6, width=0.3)
+    ax.yaxis.set_tick_params(labelsize=6, width=0.3)
+    ax.spines['right'].set_linewidth(0.3)
+    ax.spines['bottom'].set_linewidth(0.3)
 
     # Set subplot title
-    ax.set_title(label, fontsize=13)
+    ax.set_title(label, fontsize=7)
 
 
 # ======================================
 # VSI distribution under conditions
 # ======================================
 def histogram_comparison(si1, ss1, si2, ss2, si3, ss3, si4, ss4, signal_threshold, xlim,log, cmap=BIH_CMAP):
-    fig, ax = plt.subplots(1, 4, figsize=(16, 9), dpi=600)  # Create a row of 4 subplots
+    fig, ax = plt.subplots(1, 4, figsize=(18/2.54, 11/2.54), dpi=600)  # Create a row of 4 subplots
     # ax, si, ss, signal_thr, label, cmap=BIH_CMAP, xlim=(0.125, 64), log=False, ylabel=False, xticks=None
-    plot_marker_vsi_hist(ax[0], si1, ss1, signal_threshold, label="All Signals", xlim=xlim, log=log)
+    plot_marker_vsi_hist(ax[0], si1, ss1, signal_threshold, label="All Transcripts", xlim=xlim, log=log)
     plot_marker_vsi_hist(ax[1], si2, ss2, signal_threshold, label="Excluding MOD1 Marker", xlim=xlim, log=log)
     plot_marker_vsi_hist(ax[2], si3, ss3, signal_threshold, label="Excluding MOD2 Marker", xlim=xlim, log=log)
     plot_marker_vsi_hist(ax[3], si4, ss4, signal_threshold, label="Excluding MOD Marker", xlim=xlim, log=log, ylabel=True)
