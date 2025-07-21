@@ -300,70 +300,6 @@ def load_scRNA_data(mtx_path, barcodes_path, genes_path, meta_path, cell_class_f
 # ======================================
 # Cell Level VSI
 # ======================================
-# def extract_cell_vsi(
-#     boundary_df, 
-#     integrity,
-#     strength,
-#     integrity_size=1800
-# ):
-#     """
-#     Extracts the cell integrity and strength arrays based on polygonal boundaries.
-
-#     Parameters:
-#         boundary_df (pd.DataFrame): DataFrame with 'boundaryX' and 'boundaryY' columns.
-#         integrity (np.ndarray): 2D array of integrity values.
-#         strength (np.ndarray): 2D array of signal strength values.
-#         integrity_size (int): Size of the output grid (assumed square).
-
-#     Returns:
-#         tuple: (cell_integrity, cell_strength) as 2D numpy arrays.
-#     """
-
-#     cell_integrity = np.zeros((integrity_size, integrity_size))
-#     cell_strength = np.zeros((integrity_size, integrity_size))
-
-#     for idx, row in boundary_df.iterrows():
-#         x_coords = np.array(row['boundaryX'])
-#         y_coords = np.array(row['boundaryY'])
-
-#         # Filter out NaN values
-#         valid_mask = ~np.isnan(x_coords) & ~np.isnan(y_coords)
-#         x_coords = x_coords[valid_mask]
-#         y_coords = y_coords[valid_mask]
-
-#         if len(x_coords) < 3:
-#             continue  # Not enough points to form a polygon
-
-#         polygon = Polygon(zip(x_coords, y_coords))
-#         if not polygon.is_valid:
-#             continue  # Skip invalid polygons
-
-#         x_min, x_max = int(np.floor(polygon.bounds[0])), int(np.ceil(polygon.bounds[2]))
-#         y_min, y_max = int(np.floor(polygon.bounds[1])), int(np.ceil(polygon.bounds[3]))
-
-#         x_min, x_max = max(0, x_min), min(integrity_size, x_max)
-#         y_min, y_max = max(0, y_min), min(integrity_size, y_max)
-
-#         y_indices, x_indices = np.meshgrid(range(y_min, y_max), range(x_min, x_max), indexing='ij')
-#         points = np.column_stack([x_indices.ravel(), y_indices.ravel()])
-
-#         epsilon = 0.7
-#         mask = np.array([
-#             polygon.contains(Point(x, y)) or
-#             polygon.touches(Point(x, y)) or
-#             polygon.boundary.distance(Point(x, y)) < epsilon
-#             for x, y in points
-#         ])
-#         mask = mask.reshape(y_indices.shape)
-
-#         subgrid_int = integrity[y_min:y_max, x_min:x_max]
-#         subgrid_str = strength[y_min:y_max, x_min:x_max]
-
-#         cell_integrity[y_min:y_max, x_min:x_max][mask] = subgrid_int[mask]
-#         cell_strength[y_min:y_max, x_min:x_max][mask] = subgrid_str[mask]
-
-#     return cell_integrity, cell_strength
-
 def extract_cell_vsi(
     boundary_df, 
     integrity,
@@ -650,18 +586,22 @@ def kmeans_clustering(data_for_clustering, k=2, n_PCs=5, cmap_re=False):
     else:
         cm = _BIH_CMAP
 
-    plt.figure(figsize=(8, 6), dpi=600)
+    plt.figure(figsize=(8/2.54, 6/2.54), dpi=600)
     plt.scatter(
         umap_result[:, 0], umap_result[:, 1],
-        c=labels, cmap=cm, alpha=0.6, s=11, edgecolors='none'
+        c=labels, cmap=cm, alpha=0.6, s=5, edgecolors='none', rasterized=True
     )
-    plt.title("K-means Clustering")
-    plt.xlabel("UMAP 1")
-    plt.ylabel("UMAP 2")
+    plt.title("K-means Clustering", fontsize=7)
+    plt.xlabel("UMAP 1", fontsize=6)
+    plt.ylabel("UMAP 2", fontsize=6)
 
     ax = plt.gca()
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
+    ax.xaxis.set_tick_params(labelsize=6, width=0.3)
+    ax.yaxis.set_tick_params(labelsize=6, width=0.3)
+    ax.spines['left'].set_linewidth(0.3)
+    ax.spines['bottom'].set_linewidth(0.3)
     plt.show()
 
     return labels, centroids
@@ -708,18 +648,22 @@ def leiden_clustering(data_for_clustering, k=15, resolution=0.5, n_PCs=5, cmap_r
     else:
         cm = _BIH_CMAP
 
-    plt.figure(figsize=(8, 6), dpi=600)
+    plt.figure(figsize=(8/2.54, 6/2.54), dpi=600)
     plt.scatter(
         umap_result[:, 0], umap_result[:, 1],
-        c=cluster_assignments, cmap=cm, alpha=0.6, s=11, edgecolors='none'
+        c=cluster_assignments, cmap=cm, alpha=0.6, s=5, edgecolors='none', rasterized=True
     )
-    plt.title("Leiden Clustering")
-    plt.xlabel("UMAP 1")
-    plt.ylabel("UMAP 2")
+    plt.title("Leiden Clustering", fontsize=7)
+    plt.xlabel("UMAP 1", fontsize=6)
+    plt.ylabel("UMAP 2", fontsize=6)
 
     ax = plt.gca()
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
+    ax.xaxis.set_tick_params(labelsize=6, width=0.3)
+    ax.yaxis.set_tick_params(labelsize=6, width=0.3)
+    ax.spines['left'].set_linewidth(0.3)
+    ax.spines['bottom'].set_linewidth(0.3)
     plt.show()
 
     return cluster_assignments
@@ -748,18 +692,22 @@ def hierarchical_clustering(data_for_clustering, k=2, n_PCs=5, cmap_re=False):
     else:
         cm = _BIH_CMAP
 
-    plt.figure(figsize=(8, 6), dpi=600)
+    plt.figure(figsize=(8/2.54, 6/2.54), dpi=600)
     plt.scatter(
         umap_result[:, 0], umap_result[:, 1],
-        c=labels, cmap=cm, alpha=0.6, s=11, edgecolors='none'
+        c=labels, cmap=cm, alpha=0.6, s=5, edgecolors='none', rasterized=True
     )
-    plt.title("Hierarchical Clustering")
-    plt.xlabel("UMAP 1")
-    plt.ylabel("UMAP 2")
+    plt.title("Hierarchical Clustering", fontsize=7)
+    plt.xlabel("UMAP 1", fontsize=6)
+    plt.ylabel("UMAP 2", fontsize=6)
 
     ax = plt.gca()
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
+    ax.xaxis.set_tick_params(labelsize=6, width=0.3)
+    ax.yaxis.set_tick_params(labelsize=6, width=0.3)
+    ax.spines['left'].set_linewidth(0.3)
+    ax.spines['bottom'].set_linewidth(0.3)    
     plt.show()
 
     return labels

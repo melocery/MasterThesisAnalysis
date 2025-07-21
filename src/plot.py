@@ -1235,21 +1235,28 @@ def plot_pca_variance_ratio(data, n_components=14, title="Explained Variance by 
     pca.fit(data)
     explained_variance = pca.explained_variance_ratio_
 
-    plt.figure(figsize=(8, 6), dpi=600)
+    plt.figure(figsize=(8/2.54, 6/2.54), dpi=600)
     plt.plot(
         np.arange(1, len(explained_variance) + 1),
         explained_variance,
         marker='o',
+        markersize=1,
         linestyle='--',
-        color='mediumvioletred'
+        lw=0.5,
+        color='mediumvioletred',
+        rasterized=True
     )
-    plt.xlabel("Number of Principal Components")
-    plt.ylabel("Explained Variance Ratio")
-    plt.title(title)
+    plt.xlabel("Number of Principal Components", fontsize=6)
+    plt.ylabel("Explained Variance Ratio", fontsize=6)
+    plt.title(title, fontsize=7)
 
     ax = plt.gca()
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
+    ax.xaxis.set_tick_params(labelsize=6, width=0.3)
+    ax.yaxis.set_tick_params(labelsize=6, width=0.3)
+    ax.spines['left'].set_linewidth(0.3)
+    ax.spines['bottom'].set_linewidth(0.3)
     plt.show()
 
 
@@ -1266,21 +1273,28 @@ def plot_pca_cumulative_variance(data, n_components=14, title="Cumulative Explai
     pca.fit(data)
     cumulative_variance = np.cumsum(pca.explained_variance_ratio_)
 
-    plt.figure(figsize=(8, 6), dpi=600)
+    plt.figure(figsize=(8/2.54, 6/2.54), dpi=600)
     plt.plot(
         np.arange(1, len(cumulative_variance) + 1),
         cumulative_variance,
         marker='o',
+        markersize=1,
         linestyle='-',
-        color='mediumvioletred'
+        lw=0.5,
+        color='mediumvioletred',
+        rasterized=True
     )
-    plt.xlabel("Number of Principal Components")
-    plt.ylabel("Cumulative Explained Variance")
-    plt.title(title)
+    plt.xlabel("Number of Principal Components", fontsize=6)
+    plt.ylabel("Cumulative Explained Variance", fontsize=6)
+    plt.title(title, fontsize=7)
 
     ax = plt.gca()
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
+    ax.xaxis.set_tick_params(labelsize=6, width=0.3)
+    ax.yaxis.set_tick_params(labelsize=6, width=0.3)
+    ax.spines['left'].set_linewidth(0.3)
+    ax.spines['bottom'].set_linewidth(0.3)
     plt.show()
 
 
@@ -1299,20 +1313,25 @@ def plot_umap_from_pca(data, n_PCs=5, title="UMAP after PCA", color='mediumviole
 
     umap_result = umap.UMAP(n_components=2).fit_transform(pca_result)
 
-    plt.figure(figsize=(8, 6), dpi=600)
+    plt.figure(figsize=(8/2.54, 6/2.54), dpi=600)
     plt.scatter(
         umap_result[:, 0],
         umap_result[:, 1],
         alpha=0.7,
-        s=11,
+        s=5,
         edgecolors='none',
-        color=color
+        color=color,
+        rasterized=True
     )
-    plt.xlabel("UMAP 1")
-    plt.ylabel("UMAP 2")
-    plt.title(title)
+    plt.xlabel("UMAP 1", fontsize=6)
+    plt.ylabel("UMAP 2", fontsize=6)
+    plt.title(title, fontsize=7)
 
     ax = plt.gca()
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
+    ax.xaxis.set_tick_params(labelsize=6, width=0.3)
+    ax.yaxis.set_tick_params(labelsize=6, width=0.3)
+    ax.spines['left'].set_linewidth(0.3)
+    ax.spines['bottom'].set_linewidth(0.3)
     plt.show()
