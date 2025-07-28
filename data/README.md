@@ -4,7 +4,6 @@
 data/
 ├── banksy_results/
 │   ├── banksy_cluster.txt        # Cell type annotations
-│   └── umap*.csv                 # UMAP coordinates
 │
 ├── mouse_hypothalamus/           # Raw and processed MERFISH data
 │   ├── MERFISH/
