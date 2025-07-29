@@ -359,10 +359,10 @@ def plot_vsi_distribution_comparison(
             
         # Plot histograms
         vals1, bins1 = plot_histogram(
-            ax[0], cell_integrity_1, cell_strength_1, signal_threshold, cmap, label="MOD1 Signal Integrity", ylim=ylim, title=title
+            ax[0], cell_integrity_1, cell_strength_1, signal_threshold, cmap, label="MOD1 Vertical Signal Integrity", ylim=ylim, title=title
         )
         vals2, bins2 = plot_histogram(
-            ax[1], cell_integrity_2, cell_strength_2, signal_threshold, cmap, label="MOD2 Signal Integrity", ylim=ylim
+            ax[1], cell_integrity_2, cell_strength_2, signal_threshold, cmap, label="MOD2 Vertical Signal Integrity", ylim=ylim
         )
 
     plt.tight_layout()  # Adjust spacing to prevent overlap
@@ -371,11 +371,11 @@ def plot_vsi_distribution_comparison(
     return vals1, bins1, vals2, bins2
 
 
-def plot_normalized_histogram(vals1, vals2, bins, epsilon, ylim=(1e-1, 10**10), title=None, cmap=BIH_CMAP, xlab="Signal Integrity", ylab="VSI Density of MOD2/MOD1"):
+def plot_normalized_histogram(vals1, vals2, bins, epsilon, ylim=(1e-1, 10**10), title=None, cmap=BIH_CMAP, xlab="Vertical Signal Integrity", ylab="VSI Density of MOD2/MOD1"):
     vals = vals2 / (vals1 + epsilon)
     bin_centers = (bins[:-1] + bins[1:]) / 2
 
-    fig, ax = plt.subplots(figsize=(6*CM, 6*CM), dpi=600)
+    fig, ax = plt.subplots(figsize=(8*CM, 8*CM), dpi=600)
 
     # Create the histogram bars
     bars = ax.bar(bin_centers, vals, width=np.diff(bins), edgecolor="black", alpha=0.7, linewidth=0.3)
