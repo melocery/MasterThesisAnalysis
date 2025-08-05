@@ -288,13 +288,7 @@ def load_scRNA_data(mtx_path, barcodes_path, genes_path, meta_path, cell_class_f
     # Log-transform (using sparse matrix log1p)
     adata.X = adata.X.log1p()
 
-    # Scale data without centering to keep sparsity
-    scaler = MaxAbsScaler()
-    adata.X = scaler.fit_transform(adata.X)
-
     return adata
-
-
 
 
 # ======================================
