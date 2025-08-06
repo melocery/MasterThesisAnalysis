@@ -39,6 +39,7 @@ BIH_CMAP = LinearSegmentedColormap.from_list(
 
 HEATMAP_CMAP = sns.color_palette("RdYlBu_r", as_cmap=True)
 SCALEBAR_PARAMS: dict[str, Any] = {"dx": 1, "units": "um"}
+SAVE_FIG: dict[str, Any] =  {"bbox_inches":'tight', "dpi":600}
 
 CM = 1/2.54
 
@@ -122,14 +123,12 @@ def plot_VSI_map(
             fig, ax = plt.subplots(
                 1, 2,
                 figsize=(figure_height / aspect_ratio * 1.4, figure_height),
-                gridspec_kw={"width_ratios": [6, 1]},
-                dpi=600
+                gridspec_kw={"width_ratios": [6, 1]}
             )
         else:
             fig, ax = plt.subplots(
                 1, 1,
-                figsize=(figure_height / aspect_ratio, figure_height),
-                dpi=600
+                figsize=(figure_height / aspect_ratio, figure_height)
             )
             ax = [ax]
 
@@ -199,7 +198,7 @@ def plot_VSI_region(
     signal_threshold=3.0,
     figure_height=10,
     cmap="BIH",
-    side_display=None,  # "hist", "colorbar", or None
+    side_display=None,  # "colorbar", or None
     scalebar: dict | None = SCALEBAR_PARAMS,
     scale_loc='lower left',
     boundary_df=None,
@@ -224,7 +223,7 @@ def plot_VSI_region(
         signal_threshold (float): Threshold below which the signal is faded out in the plot.
         figure_height (float): Height of the figure in inches.
         cmap (str or colormap): Colormap name or object.
-        side_display (str or None): "hist", "colorbar", or None.
+        side_display (str or None): "colorbar", or None.
         scalebar (dict or None): Dictionary of parameters for drawing a scalebar.
         boundary_df (pd.DataFrame): Optional DataFrame with boundaryX and boundaryY columns.
         plot_boundary (bool): Whether to draw boundaries.
@@ -250,102 +249,74 @@ def plot_VSI_region(
             raise ValueError("BIH colormap is not defined.")
 
     side_display = str(side_display).lower() if side_display else None
-    show_hist = side_display == "hist"
     show_colorbar = side_display == "colorbar"
 
     # Determine if axes/figure need to be created
     internal_fig = False  # True if we create fig ourselves
     if ax is None:
         internal_fig = True
-        if show_hist:
-            fig, ax = plt.subplots(
-                1, 2,
-                figsize=(figure_height / aspect_ratio * 1.4, figure_height),
-                gridspec_kw={"width_ratios": [6, 1]},
-                dpi=600
-            )
-        else:
-            fig, ax = plt.subplots(
-                1, 1,
-                figsize=(figure_height / aspect_ratio, figure_height),
-                dpi=600
-            )
-            ax = [ax]
+        fig, ax = plt.subplots(
+            1, 1,
+            figsize=(figure_height / aspect_ratio, figure_height),
+            dpi=600
+        )
     else:
-        # If external ax is passed, wrap it in a list if needed
-        if not isinstance(ax, (list, tuple)):
-            ax = [ax]
-        fig = ax[0].figure
+        fig = ax.figure
+    
 
-    ax[0].set_facecolor("black")
+    ax.set_facecolor("black")
     # Main heatmap
-    img = ax[0].imshow(
+    img = ax.imshow(
         integrity,
         cmap=cmap,
         alpha=((strength / signal_threshold).clip(0, 1) ** 2),
         vmin=0,
         vmax=1,
-        rasterized=plot_rasterized
+        rasterized=plot_rasterized,
     )
-    ax[0].invert_yaxis()
+    ax.invert_yaxis()
 
     if scalebar is not None:
-        _plot_scalebar(ax[0], dx=1, units="um", location=scale_loc, length_fraction=0.2, fontsize=6, box_alpha=0, color="white")
+        _plot_scalebar(ax, dx=1, units="um", location=scale_loc, length_fraction=0.2, fontsize=6, box_alpha=0, color="white")
 
     # Display region (whole image or custom ROI)
     if x_range is not None:
-        ax[0].set_xlim(*x_range)
+        ax.set_xlim(*x_range)
     else:
-        ax[0].set_xlim(0, integrity.shape[1])
+        ax.set_xlim(0, integrity.shape[1])
+
     if y_range is not None:
-        ax[0].set_ylim(*y_range)
+        ax.set_ylim(*y_range)
     else:
-        ax[0].set_ylim(0, integrity.shape[0])
+        ax.set_ylim(0, integrity.shape[0])
 
     # Optional centroids
     if plot_centroid and cell_centroid is not None:
-        ax[0].scatter(cell_centroid['x'], cell_centroid['y'], s=1, c='orange', alpha=0.1)
+        ax.scatter(cell_centroid['x'], cell_centroid['y'], s=1, c='orange', alpha=0.1)
 
     # Optional boundaries
     if plot_boundary and boundary_df is not None:
         for _, row in boundary_df.iterrows():
-            ax[0].plot(row['boundaryX'], row['boundaryY'],
+            ax.plot(row['boundaryX'], row['boundaryY'],
                         c=boundary_color, linewidth=boundary_width)
     
-    ax[0].set_xticks([])
-    ax[0].set_yticks([])
-
-    # Optional histogram
-    if show_hist:
-        vals, bins = np.histogram(
-            integrity[strength > signal_threshold],
-            bins=50, range=(0, 1), density=True
-        )
-        bars = ax[1].barh(bins[1:-1], vals[1:], height=0.01)
-        for i, bar in enumerate(bars):
-            bar.set_color(cmap(bins[1:-1][i]))
-
-        ax[1].set_ylim(0, 1)
-        ax[1].invert_xaxis()
-        ax[1].set_xticks([])
-        ax[1].yaxis.tick_right()
-        ax[1].tick_params(axis='both', labelsize=5)
-        ax[1].spines[["top", "bottom", "left"]].set_visible(False)
-        ax[1].set_ylabel("vertical signal integrity", fontsize=7)
-        ax[1].yaxis.set_label_position("right")
-
-    elif show_colorbar:
-        cbar = fig.colorbar(img, ax=ax[0], shrink=0.8)
-        cbar.ax.tick_params(labelsize=5)
+    ax.set_xticks([])
+    ax.set_yticks([])
 
     if title is not None:
-        ax[0].set_title(title, fontsize=7)
+        ax.set_title(title, fontsize=7)
+
+    if show_colorbar:
+        cbar = fig.colorbar(img, ax=ax, shrink=0.8)
+        cbar.ax.tick_params(labelsize=5)
+
     if internal_fig:
-        plt.tight_layout()
+        fig.tight_layout()
         if show:
             plt.show()
         else:
             plt.close(fig)
+
 
 def plot_named_squares(ax, square_list, default_color="yellow", default_size=100):
     """
@@ -423,7 +394,6 @@ def plot_histogram(ax, cell_integrity, cell_strength, signal_threshold, cmap, la
         edgecolor='black',
         linewidth=0.5,
         alpha=0.8,
-        rasterized=True
     )
     
     # Apply colormap
@@ -434,8 +404,8 @@ def plot_histogram(ax, cell_integrity, cell_strength, signal_threshold, cmap, la
     ax.set_xlim(0, 1)
     ax.set_ylim(ylim)
     ax.set_yscale('log', base=2)
-    ax.set_ylabel("Density", fontsize=5)
-    ax.set_xlabel(label, fontsize=5)
+    ax.set_ylabel("Density", fontsize=6)
+    ax.set_xlabel(label, fontsize=6)
     ax.spines[["top", "right"]].set_visible(False)
     ax.yaxis.set_tick_params(labelright=False,labelsize=5)
     ax.xaxis.set_tick_params(labelsize=5)
@@ -455,6 +425,7 @@ def plot_vsi_distribution_comparison(
     cmap="BIH",
     title=None,
     ylim=(1e-1,32),
+    ax=None
 ):
     """
     Compare histograms and cumulative densities of two datasets.
@@ -486,27 +457,36 @@ def plot_vsi_distribution_comparison(
                 raise ValueError("BIH colormap is not defined.")
         
         # Create figure and subplots
-        fig, ax = plt.subplots(2, 1, figsize=(figure_height, figure_height), dpi=600)
+        own_ax = False
+        if ax is None:
+            fig, ax = plt.subplots(2, 1, figsize=(figure_height, figure_height), dpi=600)
+            own_ax = True
             
         # Plot histograms
         vals1, bins1 = plot_histogram(
-            ax[0], cell_integrity_1, cell_strength_1, signal_threshold, cmap, label="MOD1 Vertical Signal Integrity", ylim=ylim, title=title
+            ax[0], cell_integrity_1, cell_strength_1, signal_threshold, cmap, label="VSI within MOD_wm", ylim=ylim, title=title
         )
         vals2, bins2 = plot_histogram(
-            ax[1], cell_integrity_2, cell_strength_2, signal_threshold, cmap, label="MOD2 Vertical Signal Integrity", ylim=ylim
+            ax[1], cell_integrity_2, cell_strength_2, signal_threshold, cmap, label="VSI within MOD_gm", ylim=ylim
         )
 
     plt.tight_layout()  # Adjust spacing to prevent overlap
-    plt.show()
+    if own_ax:
+        plt.show()
 
     return vals1, bins1, vals2, bins2
 
 
-def plot_normalized_histogram(vals1, vals2, bins, epsilon, ylim=(1e-1, 10**10), title=None, cmap=BIH_CMAP, xlab="Vertical Signal Integrity", ylab="VSI Density of MOD2/MOD1"):
+def plot_normalized_histogram(vals1, vals2, bins, epsilon, ylim=(1e-1, 10**10), 
+                              title=None, cmap=BIH_CMAP, 
+                              xlab="Vertical Signal Integrity", ylab="VSI Density of MOD_gm / MOD_wm",
+                              ax=None):
     vals = vals2 / (vals1 + epsilon)
     bin_centers = (bins[:-1] + bins[1:]) / 2
-
-    fig, ax = plt.subplots(figsize=(8*CM, 8*CM), dpi=600)
+    own_ax = False
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(8*CM, 8*CM), dpi=600)
+        own_ax = True
 
     # Create the histogram bars
     bars = ax.bar(bin_centers, vals, width=np.diff(bins), edgecolor="black", alpha=0.7, linewidth=0.3)
@@ -527,7 +507,8 @@ def plot_normalized_histogram(vals1, vals2, bins, epsilon, ylim=(1e-1, 10**10), 
     ax.axhline(y=1, color='black', linestyle='--', linewidth=0.5)
     if title:
         plt.title(title, fontsize=7)
-    plt.show()
+    if own_ax:
+        plt.show()
 
 
 # plot_qq_integrity: Create a Q-Q plot comparing two histograms with limited (0,1) range and 1:1 aspect ratio.
@@ -567,9 +548,9 @@ def get_quantiles(cdf_x, cdf_y, quantiles):
 
 def plot_vsi_qqplot(vals1, bins1, vals2, bins2, 
                       use_cmap=False, cmap="viridis", 
-                      xlab="Quantiles of MOD1",
-                      ylab="Quantiles of MOD2",
-                      title="Q-Q Plot"
+                      xlab="Quantiles of MOD_wm",
+                      ylab="Quantiles of MOD_gm",
+                      title="Q-Q Plot", ax=None
                       ):
     """
     Create a Q-Q plot comparing two histograms based on their quantiles.
@@ -599,17 +580,20 @@ def plot_vsi_qqplot(vals1, bins1, vals2, bins2,
     q2 = np.clip(q2, 0, 1)
 
     # Create the figure and axis
-    fig, ax = plt.subplots(figsize=(6*CM, 6*CM), dpi=600)
+    own_ax = False
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(6*CM, 6*CM), dpi=600)
+        own_ax = True
 
     # Plot the Q-Q data
     if use_cmap:
         norm = Normalize(vmin=0, vmax=1)
         ax.scatter(
             q1, q2, c=quantiles, cmap=cmap, alpha=0.6, s=7,
-            norm=norm, linewidths=0.1, edgecolors='black', label=title, rasterized=True
+            norm=norm, linewidths=0.1, edgecolors='black', label=title
         )
     else:
-        ax.scatter(q1, q2, color="purple", alpha=0.6, s=7, label=title, rasterized=True)
+        ax.scatter(q1, q2, color="purple", alpha=0.6, s=7, label=title)
 
     # Draw the y = x reference line
     ax.plot([0, 1], [0, 1], "k--", label="y = x")
@@ -625,9 +609,9 @@ def plot_vsi_qqplot(vals1, bins1, vals2, bins2,
     ax.legend(fontsize=5)
     ax.grid(False)
     ax.spines[['top','right']].set_visible(False)
-
     plt.tight_layout()
-    plt.show()
+    if own_ax:
+        plt.show()
 
 
 def plot_doublets(doublets_df, boundary_df, MOD_boundary, title=None):
@@ -703,7 +687,7 @@ def plot_celltypes(
     # colormap, fix MOD subtype colors
     all_labels = cell_type['banksy_cluster'].unique()
     # Preferred hard-coded label colors
-    color_map = {8: 'red', 7: 'orange'}
+    color_map = {7: 'red', 8: 'orange'}
     # Assign tab20b colors to other clusters
     unique_other_labels = [label for label in all_labels if label not in color_map]
     colormap = plt.cm.get_cmap('tab20b', len(unique_other_labels))
@@ -716,10 +700,10 @@ def plot_celltypes(
     colors = cell_type['banksy_cluster'].map(cmap)
 
     # Create figure and axis
-    show_ax = False
+    own_ax = False
     if ax is None:
         fig, ax = plt.subplots(figsize=(8*CM, 8*CM), dpi=600)
-        show_ax = True
+        own_ax = True
 
     # Scatter plot for cells
     ax.scatter(
@@ -754,7 +738,7 @@ def plot_celltypes(
     
     ax.set_xticks([])
     ax.set_yticks([])
-    if show_ax:
+    if own_ax:
         return fig
 
 
@@ -1040,8 +1024,8 @@ def plot_knn_neighborhood(signals_df, centroid_df, MOD_boundaries, boundaries_df
 # Marker Signals Spatial Distribution
 # ======================================
 
-def plot_marker_signals(signal_df, centroid_df, title=None, 
-                        color="MOD1", xlim=(-10, 1810), ylim=(-10, 1810), 
+def plot_marker_signals(signal_df, centroid_df, title=None, scale_loc="lower left",
+                        color="MOD_wm", xlim=(-10, 1810), ylim=(-10, 1810), 
                         plot_rect=False, rect=[750, 100, 220, 1400], ax=None):
     """
     Plot signal scatter and centroid markers with optional highlight rectangle.
@@ -1050,17 +1034,17 @@ def plot_marker_signals(signal_df, centroid_df, title=None,
     - signal_df: DataFrame with 'x', 'y', and 'Total_brightness' columns
     - centroid_df: DataFrame with 'x' and 'y' columns for centroid locations
     - title: Title of the plot (string)
-    - color: 'MOD1' for orange-red, otherwise blue
+    - color: 'MOD_wm' for orange-red, otherwise blue
     - xlim: Tuple specifying x-axis limits
     - ylim: Tuple specifying y-axis limits
     - plot_rect: Boolean, whether to draw a rectangle
     - rect: List [x, y, width, height] for the rectangle
     """
 
-    if color == "MOD1":
+    if color == "MOD_wm":
         color_s = 'salmon'
         color_c = 'black'
-    elif color == "MOD2":
+    elif color == "MOD_gm":
         color_s = 'lightblue'
         color_c = 'black'
 
@@ -1069,7 +1053,7 @@ def plot_marker_signals(signal_df, centroid_df, title=None,
         fig, ax = plt.subplots(figsize=(8*CM, 8*CM), dpi=600)
         own_ax = True
 
-    plt.scatter(
+    ax.scatter(
         signal_df["x"],
         signal_df["y"],
         s=0.3,
@@ -1079,19 +1063,19 @@ def plot_marker_signals(signal_df, centroid_df, title=None,
         rasterized=True
     )
 
-    plt.scatter(
+    ax.scatter(
         centroid_df["x"],
         centroid_df["y"],
-        s=0.5, 
+        s=3, 
         facecolors='none',
-        edgecolors="#080808",
-        linewidths=0.13,
-        rasterized=True
+        edgecolors='black',
+        linewidths=0.3,
     )
+
+    _plot_scalebar(ax, dx=1, units="um", location=scale_loc, length_fraction=0.2, fontsize=6, box_alpha=1, color="black")
 
     if plot_rect and rect is not None and len(rect) == 4:
         x_rect, y_rect, width, height = rect
-        ax = plt.gca()
         rectangle_patch = patches.Rectangle(
             (x_rect, y_rect), width, height,
             linewidth=1, edgecolor='red', facecolor='none'
@@ -1117,15 +1101,16 @@ def plot_marker_signals(signal_df, centroid_df, title=None,
         )
         for label, color in label_to_color.items()
     ]
-    plt.xlim(xlim)
-    plt.ylim(ylim)
+    ax.set_xlim(xlim)
+    ax.set_ylim(ylim)
+    ax.set_xticks([])
+    ax.set_yticks([])
 
     if title:
-        plt.title(f'{title} Transcripts', fontsize=6)
+        ax.set_title(f'{title} Transcripts', fontsize=7)
 
-    ax = plt.gca()
-    ax.legend(handles=handles, fontsize=5, loc='upper center', frameon=False, 
-          bbox_to_anchor=(0.5, -0.05), ncol=2)
+    ax.legend(handles=handles, fontsize=6, loc='upper center', frameon=False, 
+          bbox_to_anchor=(0.5, -0.03), ncol=2)
     ax.xaxis.set_tick_params(labelsize=5, width=0.3)
     ax.yaxis.set_tick_params(labelsize=5, width=0.3)
     ax.spines[["top", "right", "left", "bottom"]].set_linewidth(0.3)
@@ -1140,8 +1125,8 @@ def plot_marker_signals(signal_df, centroid_df, title=None,
 # Marker Heatmap
 # ======================================
 def plot_annotate_heatmap(cluster_data, cluster_labels, gene_groups=None, zscore=True, cmap=HEATMAP_CMAP,
-                          box_specs=None, cluster_text_y=-1.2, show_cluster=True,
-                          show_cluster_lines=True, DE_g_line=True):
+                          box_specs=None, cluster_text_y=15, show_cluster=True,
+                          show_cluster_lines=True, DE_g_line=True, ax=None, title=None):
     """
     Plot expression heatmap with cluster annotations and optional decorations.
 
@@ -1214,7 +1199,10 @@ def plot_annotate_heatmap(cluster_data, cluster_labels, gene_groups=None, zscore
     reordered_expression_data = reordered_expression_data.iloc[new_gene_order, :]
 
     # Plot heatmap
-    fig, ax = plt.subplots(figsize=(18 * CM, 10 * CM), dpi=600)
+    own_ax = False
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(18 * CM, 10 * CM), dpi=600)
+        own_ax = True
     heatmap = sns.heatmap(
         reordered_expression_data,
         vmin=vmin, vmax=vmax,
@@ -1230,6 +1218,8 @@ def plot_annotate_heatmap(cluster_data, cluster_labels, gene_groups=None, zscore
     ax.set_yticklabels(ax.get_yticklabels(), fontsize=6, rotation=0)
     ax.set_xlabel("")
     ax.set_ylabel("")
+    if title is not None:
+        ax.set_title(title, fontsize=8)
 
     # Annotate cluster
     cluster_boundaries = []
@@ -1253,7 +1243,7 @@ def plot_annotate_heatmap(cluster_data, cluster_labels, gene_groups=None, zscore
     if box_specs is not None:
         ax_pos = ax.get_position()
         y_rect = ax_pos.y0 - 0.1
-        height = ax_pos.height * 18.15
+        height = ax_pos.height * 40
         for box in box_specs:
             rect = patches.Rectangle(
                 (ax_pos.x0 + box["x_offset"], y_rect),
@@ -1264,8 +1254,8 @@ def plot_annotate_heatmap(cluster_data, cluster_labels, gene_groups=None, zscore
                 linestyle=box.get("linestyle", '--')
             )
             ax.add_patch(rect)
-
-    plt.show()
+    if own_ax:
+        plt.show()
 
 
 def plot_neuron_cluster_heatmap(re_IN, re_IN_clu, DE_g=True, cmap=HEATMAP_CMAP, figures=(15*CM, 25*CM), DE_g_x=5):
@@ -1415,20 +1405,21 @@ def plot_marker_vsi_hist(ax, si, ss, signal_thr, label, cmap=BIH_CMAP, xlim=(0.1
     ax.spines[['right', 'bottom']].set_linewidth(0.3)
 
     # Set subplot title
-    ax.set_title(label, fontsize=7)
+    ax.set_title(label, fontsize=8)
 
 
 # ======================================
 # VSI distribution under conditions
 # ======================================
-def histogram_comparison(si1, ss1, si2, ss2, si3, ss3, si4, ss4, signal_threshold, xlim,log, cmap=BIH_CMAP):
-    fig, ax = plt.subplots(1, 4, figsize=(18*CM, 11*CM), dpi=600)  # Create a row of 4 subplots
-    # ax, si, ss, signal_thr, label, cmap=BIH_CMAP, xlim=(0.125, 64), log=False, ylabel=False, xticks=None
+def histogram_comparison(si1, ss1, si2, ss2, si3, ss3, si4, ss4, signal_threshold, xlim,log,fig_dir=None):
+    fig, ax = plt.subplots(1, 4, figsize=(18*CM, 10*CM))  # Create a row of 4 subplots
     plot_marker_vsi_hist(ax[0], si1, ss1, signal_threshold, label="All Transcripts", xlim=xlim, log=log)
-    plot_marker_vsi_hist(ax[1], si2, ss2, signal_threshold, label="Excluding MOD1 Marker", xlim=xlim, log=log)
-    plot_marker_vsi_hist(ax[2], si3, ss3, signal_threshold, label="Excluding MOD2 Marker", xlim=xlim, log=log)
+    plot_marker_vsi_hist(ax[1], si2, ss2, signal_threshold, label="Excluding MOD_wm Marker", xlim=xlim, log=log)
+    plot_marker_vsi_hist(ax[2], si3, ss3, signal_threshold, label="Excluding MOD_gm Marker", xlim=xlim, log=log)
     plot_marker_vsi_hist(ax[3], si4, ss4, signal_threshold, label="Excluding MOD Marker", xlim=xlim, log=log, ylabel=True)
-    plt.tight_layout()  # Adjust spacing to prevent overlap
+    plt.tight_layout()
+    if fig_dir is not None:
+        plt.savefig(fig_dir, **SAVE_FIG)
     plt.show()
 
 
