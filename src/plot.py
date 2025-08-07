@@ -1532,7 +1532,17 @@ def plot_pca_cumulative_variance(data, n_components=14, title="Cumulative Explai
         plt.show()
 
 
-def plot_umap_from_pca(data, n_PCs=5, title="UMAP after PCA", color='mediumvioletred'):
+def plot_umap_from_pca(
+    data,
+    n_PCs=5,
+    title="UMAP after PCA",
+    color='mediumvioletred',
+    ax=None,
+    x_inv=False,
+    y_inv=False,
+    xlim=None,
+    ylim=None
+):
     """
     Perform PCA and UMAP projection, then plot UMAP result.
 
@@ -1541,29 +1551,52 @@ def plot_umap_from_pca(data, n_PCs=5, title="UMAP after PCA", color='mediumviole
     - n_PCs (int): Number of principal components to use
     - title (str): Title for the plot
     - color (str): Color of scatter points
+    - ax (matplotlib Axes): Optional axes to plot on
+    - x_inv, y_inv (bool): Whether to invert x/y axis
+    - xlim, ylim (tuple): Manual limits for x and y axes
     """
     pca = PCA(n_components=n_PCs, random_state=42)
     pca_result = pca.fit_transform(data)
 
-    umap_result = umap.UMAP(n_components=2).fit_transform(pca_result)
+    umap_result = umap.UMAP(n_components=2, random_state=42).fit_transform(pca_result)
 
-    plt.figure(figsize=(8*CM, 6*CM), dpi=600)
-    plt.scatter(
+    own_ax = False
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(8*CM, 8*CM), dpi=600)
+        own_ax = True
+
+    ax.scatter(
         umap_result[:, 0],
         umap_result[:, 1],
-        alpha=0.7,
-        s=5,
+        s=0.7,
         edgecolors='none',
         color=color,
         rasterized=True
     )
-    plt.xlabel("UMAP 1", fontsize=6)
-    plt.ylabel("UMAP 2", fontsize=6)
-    plt.title(title, fontsize=7)
 
-    ax = plt.gca()
+    # Set limits if provided
+    if xlim is not None:
+        ax.set_xlim(xlim)
+    if ylim is not None:
+        ax.set_ylim(ylim)
+
+    # Set axis inversion (should go AFTER setting limits)
+    if x_inv:
+        ax.invert_xaxis()
+    if y_inv:
+        ax.invert_yaxis()
+
+    # Aspect ratio: make it square
+    ax.set_aspect('equal', adjustable='box')
+
+    ax.set_xlabel("UMAP 1", fontsize=6)
+    ax.set_ylabel("UMAP 2", fontsize=6)
+    ax.set_title(title, fontsize=7)
+
     ax.spines[["top", "right", "left", "bottom"]].set_linewidth(0.3)
     ax.set_xticks([])
     ax.set_yticks([])
 
-    plt.show()
+    if own_ax:
+        plt.tight_layout()
+        plt.show()
