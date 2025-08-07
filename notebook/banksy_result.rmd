@@ -1,0 +1,81 @@
+---
+title: "BANKSY result"
+output: pdf_document
+date: "2025-01-06"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+necessay packages  
+need the (legacy) version of BANKSY (v 0.1.5) for recreating this analysis  
+- `remotes::install_github("prabhakarlab/Banksy@main")` to install 0.1.5.
+```{r, warning=FALSE}
+rm(list=ls())
+graphics.off()
+
+library(Banksy)
+library(gridExtra) # grid.arrange
+library(ggplot2) # facet_wrap 
+library(scales) # show_col
+library(data.table) # fread
+library(plyr) # mapvalues
+library(tictoc)
+library(ComplexHeatmap)
+library(peakRAM)
+library(dplyr)
+```
+
+load the provided BANKSY object:  
+- Use provided banksy object (banksyObj_provided.rds) that has had clustering already performed on all naive animals  
+- Download this object from the Dropbox link at https://www.dropbox.com/scl/fi/eq05c2gip0g61vc0i6n1e/banksyObj_provided.rds?rlkey=z7w2tywtn4h8jiapeymv0l54e&dl=0  
+```{r, warning=FALSE}
+data.dir = '../data/banksy_results/'
+bank <- readRDS(file = paste0(data.dir, 'banksyObj_provided.rds'))
+```
+
+### BANKSY cluster
+Animal 1; Behavor = Naive;  
+k_geom = 15; lambda = 0.2; npcs = 20; k_expr = 50; res = 0.5
+```{r, warning=FALSE}
+banksy_cluster <- bank@meta.data
+filtered_data <- banksy_cluster %>%
+  filter(dataset == "Animal_1", Behavior == "Naive", Cell_class != "Ambiguous") %>%
+  select(cell_ID, Bregma, clust_M1_lam0.2_k50_res0.5, Centroid_X, Centroid_Y)
+
+names(filtered_data)[names(filtered_data) == "clust_M1_lam0.2_k50_res0.5"] <- "lam0.2"
+
+write.table(filtered_data, "../data/banksy_results/banksy_cluster.txt",
+            sep = "\t", row.names = FALSE, quote = FALSE)
+```
+
+
+### BANKSY UMAP
+lam = 0.2  
+```{r}
+umap <- bank@reduction[["umap_M1_lam0.2"]]
+umap_df <- as.data.frame(umap)
+umap_df$cell_ID <- rownames(umap_df)
+
+umap_filtered <- umap_df %>%
+  filter(cell_ID %in% filtered_data$cell_ID)
+
+write.table(umap_filtered, "../data/banksy_results/umap_lam2.txt", 
+            sep = "\t", quote = FALSE, row.names = FALSE)
+```
+
+
+lam = 0  
+```{r}
+umap <- bank@reduction[["umap_M1_lam0"]]
+umap_df <- as.data.frame(umap)
+umap_df$cell_ID <- rownames(umap_df)
+
+umap_filtered <- umap_df %>%
+  filter(cell_ID %in% filtered_data$cell_ID)
+
+write.table(umap_filtered, "../data/banksy_results/umap_lam0.txt", 
+            sep = "\t", quote = FALSE, row.names = FALSE)
+
+```

@@ -40,6 +40,7 @@ BIH_CMAP = LinearSegmentedColormap.from_list(
 HEATMAP_CMAP = sns.color_palette("RdYlBu_r", as_cmap=True)
 SCALEBAR_PARAMS: dict[str, Any] = {"dx": 1, "units": "um"}
 SAVE_FIG: dict[str, Any] =  {"bbox_inches":'tight', "dpi":600}
+roi_scatter_kwargs = dict(marker=".", alpha=0.8, s=11)
 
 CM = 1/2.54
 
@@ -411,7 +412,7 @@ def plot_histogram(ax, cell_integrity, cell_strength, signal_threshold, cmap, la
     ax.xaxis.set_tick_params(labelsize=5)
 
     if title:
-        ax.set_title(title, fontsize=7)
+        ax.set_title(title, fontsize=8)
     
     return vals, bins
 
@@ -506,7 +507,7 @@ def plot_normalized_histogram(vals1, vals2, bins, epsilon, ylim=(1e-1, 10**10),
     ax.set_ylim(ylim)
     ax.axhline(y=1, color='black', linestyle='--', linewidth=0.5)
     if title:
-        plt.title(title, fontsize=7)
+        plt.title(title, fontsize=8)
     if own_ax:
         plt.show()
 
@@ -625,7 +626,7 @@ def plot_doublets(doublets_df, boundary_df, MOD_boundary, title=None):
     """
     import matplotlib.pyplot as plt
 
-    fig, ax = plt.subplots(figsize=(8, 8), dpi=600)
+    fig, ax = plt.subplots(figsize=(8, 8))
 
     # --- Plot doublets ---
     sc = ax.scatter(
@@ -660,6 +661,28 @@ def plot_doublets(doublets_df, boundary_df, MOD_boundary, title=None):
     plt.tight_layout()
     plt.show()
 
+def plot_transcript_view(ax, roi_size, roi_df, boundaries_df, title):
+    (x_min, x_max), (y_min, y_max) = roi_size
+    ax.scatter(
+        roi_df["x"],
+        roi_df["y"],
+        c=roi_df["RGB"].to_numpy(),
+        **roi_scatter_kwargs,
+        edgecolors='none'
+    )
+    ax.set(xlim=(x_min, x_max), ylim=(y_min, y_max))
+    filtered_df = boundaries_df[
+        (boundaries_df['x'] >= x_min) & (boundaries_df['x'] <= x_max) &
+        (boundaries_df['y'] >= y_min) & (boundaries_df['y'] <= y_max)
+    ]
+    for _, row in filtered_df.iterrows():
+        ax.plot(row['boundaryX'], row['boundaryY'], c='#2C2C2C', linewidth=0.7)
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.set_aspect('equal')
+    ax.set_title(title, fontsize=8)
+    for spine in ax.spines.values():
+        spine.set_linewidth(0.3)
 
 # ======================================
 # Cell types
@@ -1411,22 +1434,22 @@ def plot_marker_vsi_hist(ax, si, ss, signal_thr, label, cmap=BIH_CMAP, xlim=(0.1
 # ======================================
 # VSI distribution under conditions
 # ======================================
-def histogram_comparison(si1, ss1, si2, ss2, si3, ss3, si4, ss4, signal_threshold, xlim,log,fig_dir=None):
+def histogram_comparison(si1, ss1, si2, ss2, si3, ss3, si4, ss4, signal_threshold, xlim,log,save_dir=None):
     fig, ax = plt.subplots(1, 4, figsize=(18*CM, 10*CM))  # Create a row of 4 subplots
     plot_marker_vsi_hist(ax[0], si1, ss1, signal_threshold, label="All Transcripts", xlim=xlim, log=log)
     plot_marker_vsi_hist(ax[1], si2, ss2, signal_threshold, label="Excluding MOD_wm Marker", xlim=xlim, log=log)
     plot_marker_vsi_hist(ax[2], si3, ss3, signal_threshold, label="Excluding MOD_gm Marker", xlim=xlim, log=log)
-    plot_marker_vsi_hist(ax[3], si4, ss4, signal_threshold, label="Excluding MOD Marker", xlim=xlim, log=log, ylabel=True)
+    plot_marker_vsi_hist(ax[3], si4, ss4, signal_threshold, label="Excluding All MOD Marker", xlim=xlim, log=log, ylabel=True)
     plt.tight_layout()
-    if fig_dir is not None:
-        plt.savefig(fig_dir, **SAVE_FIG)
+    if save_dir is not None:
+        plt.savefig(save_dir, **SAVE_FIG)
     plt.show()
 
 
 # ======================================
 # PCA and UMAP
 # ======================================
-def plot_pca_variance_ratio(data, n_components=14, title="Explained Variance by PC"):
+def plot_pca_variance_ratio(data, n_components=14, title="Explained Variance by PC", ax=None, ylab=True):
     """
     Plot the explained variance ratio of PCA components.
 
@@ -1439,8 +1462,12 @@ def plot_pca_variance_ratio(data, n_components=14, title="Explained Variance by 
     pca.fit(data)
     explained_variance = pca.explained_variance_ratio_
 
-    plt.figure(figsize=(8*CM, 6*CM), dpi=600)
-    plt.plot(
+    own_ax = False
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(8*CM, 8*CM), dpi=600)
+        own_ax = True
+
+    ax.plot(
         np.arange(1, len(explained_variance) + 1),
         explained_variance,
         marker='o',
@@ -1450,20 +1477,20 @@ def plot_pca_variance_ratio(data, n_components=14, title="Explained Variance by 
         color='mediumvioletred',
         rasterized=True
     )
-    plt.xlabel("Number of Principal Components", fontsize=6)
-    plt.ylabel("Explained Variance Ratio", fontsize=6)
-    plt.title(title, fontsize=7)
-
-    ax = plt.gca()
+    ax.set_xlabel("Number of Principal Components", fontsize=7)
+    if ylab:
+        ax.set_ylabel("Explained Variance Ratio", fontsize=7)
+    ax.set_title(title, fontsize=8)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
     ax.xaxis.set_tick_params(labelsize=6, width=0.3)
     ax.yaxis.set_tick_params(labelsize=6, width=0.3)
     ax.spines[["left", "bottom"]].set_linewidth(0.3)
-    plt.show()
+    if own_ax:
+        plt.show()
 
 
-def plot_pca_cumulative_variance(data, n_components=14, title="Cumulative Explained Variance"):
+def plot_pca_cumulative_variance(data, n_components=14, title="Cumulative Explained Variance", ax=None, ylab=True):
     """
     Plot cumulative explained variance from PCA.
 
@@ -1476,8 +1503,12 @@ def plot_pca_cumulative_variance(data, n_components=14, title="Cumulative Explai
     pca.fit(data)
     cumulative_variance = np.cumsum(pca.explained_variance_ratio_)
 
-    plt.figure(figsize=(8*CM, 6*CM), dpi=600)
-    plt.plot(
+    own_ax = False
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(8*CM, 8*CM), dpi=600)
+        own_ax = True
+
+    ax.plot(
         np.arange(1, len(cumulative_variance) + 1),
         cumulative_variance,
         marker='o',
@@ -1487,17 +1518,18 @@ def plot_pca_cumulative_variance(data, n_components=14, title="Cumulative Explai
         color='mediumvioletred',
         rasterized=True
     )
-    plt.xlabel("Number of Principal Components", fontsize=6)
-    plt.ylabel("Cumulative Explained Variance", fontsize=6)
-    plt.title(title, fontsize=7)
+    ax.set_xlabel("Number of Principal Components", fontsize=7)
+    if ylab:
+        ax.set_ylabel("Cumulative Explained Variance", fontsize=7)
+    ax.set_title(title, fontsize=8)
 
-    ax = plt.gca()
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
     ax.xaxis.set_tick_params(labelsize=6, width=0.3)
     ax.yaxis.set_tick_params(labelsize=6, width=0.3)
     ax.spines[["left", "bottom"]].set_linewidth(0.3)
-    plt.show()
+    if own_ax:
+        plt.show()
 
 
 def plot_umap_from_pca(data, n_PCs=5, title="UMAP after PCA", color='mediumvioletred'):
@@ -1530,10 +1562,8 @@ def plot_umap_from_pca(data, n_PCs=5, title="UMAP after PCA", color='mediumviole
     plt.title(title, fontsize=7)
 
     ax = plt.gca()
-    ax.spines["top"].set_visible(False)
-    ax.spines["right"].set_visible(False)
-    ax.xaxis.set_tick_params(labelsize=6, width=0.3)
-    ax.yaxis.set_tick_params(labelsize=6, width=0.3)
-    ax.spines[["left", "bottom"]].set_linewidth(0.3)
+    ax.spines[["top", "right", "left", "bottom"]].set_linewidth(0.3)
+    ax.set_xticks([])
+    ax.set_yticks([])
 
     plt.show()

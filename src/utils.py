@@ -25,6 +25,7 @@ import umap
 import matplotlib.pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap
 
+CM = 1/2.54
 
 _BIH_CMAP = LinearSegmentedColormap.from_list(
     "BIH",
@@ -553,7 +554,7 @@ def process_related_genes(DE_genes, sc_data, top_n=26):
 # scRNA-seq Data Clustering
 # ======================================
 
-def kmeans_clustering(data_for_clustering, k=2, n_PCs=5, cmap_re=False):
+def kmeans_clustering(data_for_clustering, k=2, n_PCs=5, cmap_re=False, ax=None, title=None):
     """
     Perform KMeans clustering and visualize results using UMAP.
 
@@ -580,28 +581,29 @@ def kmeans_clustering(data_for_clustering, k=2, n_PCs=5, cmap_re=False):
     else:
         cm = _BIH_CMAP
 
-    plt.figure(figsize=(8/2.54, 6/2.54), dpi=600)
-    plt.scatter(
+    own_ax = False
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(8*CM, 8*CM), dpi=600)
+        own_ax = True
+    
+    ax.scatter(
         umap_result[:, 0], umap_result[:, 1],
         c=labels, cmap=cm, alpha=0.6, s=5, edgecolors='none', rasterized=True
     )
-    plt.title("K-means Clustering", fontsize=7)
-    plt.xlabel("UMAP 1", fontsize=6)
-    plt.ylabel("UMAP 2", fontsize=6)
-
-    ax = plt.gca()
-    ax.spines["top"].set_visible(False)
-    ax.spines["right"].set_visible(False)
-    ax.xaxis.set_tick_params(labelsize=6, width=0.3)
-    ax.yaxis.set_tick_params(labelsize=6, width=0.3)
-    ax.spines['left'].set_linewidth(0.3)
-    ax.spines['bottom'].set_linewidth(0.3)
-    plt.show()
+    if title is not None:
+        ax.set_title(title, fontsize=8)
+    ax.set_xlabel("UMAP 1", fontsize=6)
+    ax.set_ylabel("UMAP 2", fontsize=6)
+    ax.spines[["top", "right", "left", "bottom"]].set_linewidth(0.3)
+    ax.set_xticks([])
+    ax.set_yticks([])
+    if own_ax:
+        plt.show()
 
     return labels, centroids
 
 
-def leiden_clustering(data_for_clustering, k=15, resolution=0.5, n_PCs=5, cmap_re=False):
+def leiden_clustering(data_for_clustering, k=15, resolution=0.5, n_PCs=5, cmap_re=False, ax=None, title=None):
     """
     Perform Leiden clustering and visualize results using UMAP.
 
@@ -642,28 +644,29 @@ def leiden_clustering(data_for_clustering, k=15, resolution=0.5, n_PCs=5, cmap_r
     else:
         cm = _BIH_CMAP
 
-    plt.figure(figsize=(8/2.54, 6/2.54), dpi=600)
-    plt.scatter(
+    own_ax = False
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(8*CM, 8*CM), dpi=600)
+        own_ax = True
+
+    ax.scatter(
         umap_result[:, 0], umap_result[:, 1],
         c=cluster_assignments, cmap=cm, alpha=0.6, s=5, edgecolors='none', rasterized=True
     )
-    plt.title("Leiden Clustering", fontsize=7)
-    plt.xlabel("UMAP 1", fontsize=6)
-    plt.ylabel("UMAP 2", fontsize=6)
-
-    ax = plt.gca()
-    ax.spines["top"].set_visible(False)
-    ax.spines["right"].set_visible(False)
-    ax.xaxis.set_tick_params(labelsize=6, width=0.3)
-    ax.yaxis.set_tick_params(labelsize=6, width=0.3)
-    ax.spines['left'].set_linewidth(0.3)
-    ax.spines['bottom'].set_linewidth(0.3)
-    plt.show()
+    if title is not None:
+        ax.set_title(title, fontsize=8)
+    ax.set_xlabel("UMAP 1", fontsize=6)
+    ax.set_ylabel("UMAP 2", fontsize=6)
+    ax.spines[["top", "right", "left", "bottom"]].set_linewidth(0.3)
+    ax.set_xticks([])
+    ax.set_yticks([])
+    if own_ax:
+        plt.show()
 
     return cluster_assignments
 
 
-def hierarchical_clustering(data_for_clustering, k=2, n_PCs=5, cmap_re=False):
+def hierarchical_clustering(data_for_clustering, k=2, n_PCs=5, cmap_re=False, ax=None, title=None):
     """
     Perform hierarchical clustering and visualize results using UMAP.
 
@@ -686,25 +689,23 @@ def hierarchical_clustering(data_for_clustering, k=2, n_PCs=5, cmap_re=False):
     else:
         cm = _BIH_CMAP
 
-    plt.figure(figsize=(8/2.54, 6/2.54), dpi=600)
-    plt.scatter(
+    own_ax = False
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(8*CM, 8*CM), dpi=600)
+        own_ax = True
+
+    ax.scatter(
         umap_result[:, 0], umap_result[:, 1],
         c=labels, cmap=cm, alpha=0.6, s=5, edgecolors='none', rasterized=True
     )
-    plt.title("Hierarchical Clustering", fontsize=7)
-    plt.xlabel("UMAP 1", fontsize=6)
-    plt.ylabel("UMAP 2", fontsize=6)
-
-    ax = plt.gca()
-    ax.spines["top"].set_visible(False)
-    ax.spines["right"].set_visible(False)
-    ax.xaxis.set_tick_params(labelsize=6, width=0.3)
-    ax.yaxis.set_tick_params(labelsize=6, width=0.3)
-    ax.spines['left'].set_linewidth(0.3)
-    ax.spines['bottom'].set_linewidth(0.3)    
-    plt.show()
+    if title is not None:
+        ax.set_title(title, fontsize=8)
+    ax.set_xlabel("UMAP 1", fontsize=6)
+    ax.set_ylabel("UMAP 2", fontsize=6)
+    ax.spines[["top", "right", "left", "bottom"]].set_linewidth(0.3)
+    ax.set_xticks([])
+    ax.set_yticks([])
+    if own_ax:
+        plt.show()
 
     return labels
-
-
-
