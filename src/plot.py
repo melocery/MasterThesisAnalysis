@@ -305,10 +305,10 @@ def plot_VSI_region(
     ax.set_yticks([])
 
     if title is not None:
-        ax.set_title(title, fontsize=7)
+        ax.set_title(title, fontsize=8)
 
     if show_colorbar:
-        cbar = fig.colorbar(img, ax=ax, shrink=0.8)
+        cbar = fig.colorbar(img, ax=ax, shrink=0.9)
         cbar.ax.tick_params(labelsize=5)
 
     if internal_fig:
@@ -465,10 +465,10 @@ def plot_vsi_distribution_comparison(
             
         # Plot histograms
         vals1, bins1 = plot_histogram(
-            ax[0], cell_integrity_1, cell_strength_1, signal_threshold, cmap, label="VSI within MOD_wm", ylim=ylim, title=title
+            ax[0], cell_integrity_1, cell_strength_1, signal_threshold, cmap, label="VSI within MOD-wm", ylim=ylim, title=title
         )
         vals2, bins2 = plot_histogram(
-            ax[1], cell_integrity_2, cell_strength_2, signal_threshold, cmap, label="VSI within MOD_gm", ylim=ylim
+            ax[1], cell_integrity_2, cell_strength_2, signal_threshold, cmap, label="VSI within MOD-gm", ylim=ylim
         )
 
     plt.tight_layout()  # Adjust spacing to prevent overlap
@@ -480,7 +480,7 @@ def plot_vsi_distribution_comparison(
 
 def plot_normalized_histogram(vals1, vals2, bins, epsilon, ylim=(1e-1, 10**10), 
                               title=None, cmap=BIH_CMAP, 
-                              xlab="Vertical Signal Integrity", ylab="VSI Density of MOD_gm / MOD_wm",
+                              xlab="Vertical Signal Integrity", ylab="VSI Density of MOD-gm / MOD-wm",
                               ax=None):
     vals = vals2 / (vals1 + epsilon)
     bin_centers = (bins[:-1] + bins[1:]) / 2
@@ -549,8 +549,8 @@ def get_quantiles(cdf_x, cdf_y, quantiles):
 
 def plot_vsi_qqplot(vals1, bins1, vals2, bins2, 
                       use_cmap=False, cmap="viridis", 
-                      xlab="Quantiles of MOD_wm",
-                      ylab="Quantiles of MOD_gm",
+                      xlab="Quantiles of MOD-wm",
+                      ylab="Quantiles of MOD-gm",
                       title="Q-Q Plot", ax=None
                       ):
     """
@@ -734,7 +734,7 @@ def plot_celltypes(
         cell_type["y"],
         s=11,
         c=colors,
-        rasterized=True
+        # rasterized=True
     )
 
     # Overlay boundaries
@@ -1048,7 +1048,7 @@ def plot_knn_neighborhood(signals_df, centroid_df, MOD_boundaries, boundaries_df
 # ======================================
 
 def plot_marker_signals(signal_df, centroid_df, title=None, scale_loc="lower left",
-                        color="MOD_wm", xlim=(-10, 1810), ylim=(-10, 1810), 
+                        color="MOD-wm", xlim=(-10, 1810), ylim=(-10, 1810), 
                         plot_rect=False, rect=[750, 100, 220, 1400], ax=None):
     """
     Plot signal scatter and centroid markers with optional highlight rectangle.
@@ -1057,17 +1057,17 @@ def plot_marker_signals(signal_df, centroid_df, title=None, scale_loc="lower lef
     - signal_df: DataFrame with 'x', 'y', and 'Total_brightness' columns
     - centroid_df: DataFrame with 'x' and 'y' columns for centroid locations
     - title: Title of the plot (string)
-    - color: 'MOD_wm' for orange-red, otherwise blue
+    - color: 'MOD-wm' for orange-red, otherwise blue
     - xlim: Tuple specifying x-axis limits
     - ylim: Tuple specifying y-axis limits
     - plot_rect: Boolean, whether to draw a rectangle
     - rect: List [x, y, width, height] for the rectangle
     """
 
-    if color == "MOD_wm":
+    if color == "MOD-wm":
         color_s = 'salmon'
         color_c = 'black'
-    elif color == "MOD_gm":
+    elif color == "MOD-gm":
         color_s = 'lightblue'
         color_c = 'black'
 
@@ -1281,7 +1281,7 @@ def plot_annotate_heatmap(cluster_data, cluster_labels, gene_groups=None, zscore
         plt.show()
 
 
-def plot_neuron_cluster_heatmap(re_IN, re_IN_clu, DE_g=True, cmap=HEATMAP_CMAP, figures=(15*CM, 25*CM), DE_g_x=5):
+def plot_neuron_cluster_heatmap(re_IN, re_IN_clu, DE_g=True, cmap=HEATMAP_CMAP, figures=(15*CM, 25*CM), DE_g_x=5, save_fig=None):
     """
     Plot heatmap of expression matrix with cluster labels and optional DE gene divider.
 
@@ -1295,7 +1295,7 @@ def plot_neuron_cluster_heatmap(re_IN, re_IN_clu, DE_g=True, cmap=HEATMAP_CMAP, 
     """
     unique_labels = sorted(set(re_IN_clu))
 
-    plt.figure(figsize=figures, dpi=600)
+    plt.figure(figsize=figures)
     ax = sns.heatmap(
         re_IN.T,
         vmin=-3, vmax=3,
@@ -1363,7 +1363,8 @@ def plot_neuron_cluster_heatmap(re_IN, re_IN_clu, DE_g=True, cmap=HEATMAP_CMAP, 
     plt.xlabel("")
     plt.ylabel("")
     plt.tight_layout()
-    plt.savefig("InCluster.pdf")
+    if save_fig is not None:
+        plt.savefig(save_fig, **SAVE_FIG)
     plt.show()
 
 # ======================================
@@ -1437,8 +1438,8 @@ def plot_marker_vsi_hist(ax, si, ss, signal_thr, label, cmap=BIH_CMAP, xlim=(0.1
 def histogram_comparison(si1, ss1, si2, ss2, si3, ss3, si4, ss4, signal_threshold, xlim,log,save_dir=None):
     fig, ax = plt.subplots(1, 4, figsize=(18*CM, 10*CM))  # Create a row of 4 subplots
     plot_marker_vsi_hist(ax[0], si1, ss1, signal_threshold, label="All Transcripts", xlim=xlim, log=log)
-    plot_marker_vsi_hist(ax[1], si2, ss2, signal_threshold, label="Excluding MOD_wm Marker", xlim=xlim, log=log)
-    plot_marker_vsi_hist(ax[2], si3, ss3, signal_threshold, label="Excluding MOD_gm Marker", xlim=xlim, log=log)
+    plot_marker_vsi_hist(ax[1], si2, ss2, signal_threshold, label="Excluding MOD-wm Marker", xlim=xlim, log=log)
+    plot_marker_vsi_hist(ax[2], si3, ss3, signal_threshold, label="Excluding MOD-gm Marker", xlim=xlim, log=log)
     plot_marker_vsi_hist(ax[3], si4, ss4, signal_threshold, label="Excluding All MOD Marker", xlim=xlim, log=log, ylabel=True)
     plt.tight_layout()
     if save_dir is not None:
